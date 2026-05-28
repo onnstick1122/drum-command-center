@@ -30,18 +30,27 @@ def load_data():
 # --- TAB 1: DASHBOARD ---
 with tab1:
     st.title("Command Center")
-    df = load_data()
-    latest = df.loc[df['Timestamp'].idxmax()]
     
-    # Show ALL metrics dynamically
-    cols = st.columns(2)
-    metrics = [col for col in df.columns if col != 'Timestamp']
-    for i, col in enumerate(metrics):
-        cols[i % 2].metric(col.replace(" Followers", ""), int(latest[col]))
-    
-    fig = px.line(df, x='Timestamp', y=metrics, template="plotly_dark")
-    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-    st.plotly_chart(fig, use_container_width=True)
+    # REFRESH BUTTON ADDED BACK HERE
+    if st.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.rerun()
+        
+    try:
+        df = load_data()
+        latest = df.loc[df['Timestamp'].idxmax()]
+        
+        # Show ALL metrics dynamically
+        cols = st.columns(2)
+        metrics = [col for col in df.columns if col != 'Timestamp']
+        for i, col in enumerate(metrics):
+            cols[i % 2].metric(col.replace(" Followers", ""), int(latest[col]))
+        
+        fig = px.line(df, x='Timestamp', y=metrics, template="plotly_dark")
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:
+        st.warning("Data loading... please wait.")
 
 # --- TAB 2: AI ASSISTANT ---
 with tab2:
@@ -52,7 +61,6 @@ with tab2:
 # --- TAB 3: LINKS ---
 with tab3:
     st.title("Quick Links")
-    # All 6 links forced into the display
     links = [
         ("Twitch", "https://twitch.tv/ustayblowinHIGH"), 
         ("TikTok", "https://tiktok.com/@unpdrum"), 
