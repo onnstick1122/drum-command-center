@@ -11,28 +11,10 @@ if 'accent_color' not in st.session_state:
 
 st.markdown(f"""
     <style>
-    /* Global Container */
     .stApp {{ background-color: #080808; }}
-    
-    /* Designer Cards */
-    div[data-testid="stVerticalBlock"] {{ gap: 1rem; }}
-    .css-1r6slp0 {{ background-color: #121212; border: 1px solid #222; border-radius: 16px; padding: 20px; }}
-    
-    /* Typography */
-    h1, h2, h3 {{ font-family: 'Helvetica Neue', sans-serif; letter-spacing: -0.5px; }}
-    
-    /* Custom Metric Cards */
-    [data-testid="stMetric"] {{ background: #161616; padding: 15px; border-radius: 12px; border-left: 4px solid {st.session_state.accent_color}; }}
+    [data-testid="stMetric"] {{ background: #161616; padding: 15px; border-radius: 12px; border-left: 4px solid {st.session_state.accent_color}; margin-bottom: 10px; }}
     [data-testid="stMetricValue"] {{ color: #ffffff; font-weight: 700; }}
-    
-    /* AI Chat Styling */
-    .stChatMessage {{ background-color: #1a1a1a; border-radius: 12px; }}
-    
-    /* Buttons */
-    div.stButton > button {{ 
-        background: linear-gradient(90deg, {st.session_state.accent_color}, #00aaff);
-        color: white; border: none; border-radius: 8px; font-weight: bold; padding: 10px 24px;
-    }}
+    div.stButton > button {{ background: linear-gradient(90deg, {st.session_state.accent_color}, #00aaff); color: white; border: none; border-radius: 8px; font-weight: bold; padding: 10px 24px; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -51,26 +33,34 @@ with tab1:
     df = load_data()
     latest = df.loc[df['Timestamp'].idxmax()]
     
-    cols = st.columns(3)
-    for i, col in enumerate(df.columns[1:4]):
-        cols[i % 3].metric(col.replace(" Followers", ""), int(latest[col]))
+    # Show ALL metrics dynamically
+    cols = st.columns(2)
+    metrics = [col for col in df.columns if col != 'Timestamp']
+    for i, col in enumerate(metrics):
+        cols[i % 2].metric(col.replace(" Followers", ""), int(latest[col]))
     
-    fig = px.line(df, x='Timestamp', y=df.columns[1:], template="plotly_dark")
+    fig = px.line(df, x='Timestamp', y=metrics, template="plotly_dark")
     fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     st.plotly_chart(fig, use_container_width=True)
 
 # --- TAB 2: AI ASSISTANT ---
 with tab2:
     st.title("Drum AI")
-    st.chat_message("assistant").write("Ready to optimize your stream. What's the plan?")
+    st.chat_message("assistant").write("Ready to analyze your growth. What's the plan?")
     st.chat_input("Ask for insights...")
 
 # --- TAB 3: LINKS ---
 with tab3:
     st.title("Quick Links")
-    links = [("Twitch", "https://twitch.tv/ustayblowinHIGH"), ("TikTok", "https://tiktok.com/@unpdrum"), 
-             ("YouTube", "https://youtube.com/@unpdrum"), ("Facebook", "https://facebook.com/unpdrum"), 
-             ("Instagram", "https://instagram.com/@unpdrum"), ("Kick", "https://kick.com/unpdrum")]
+    # All 6 links forced into the display
+    links = [
+        ("Twitch", "https://twitch.tv/ustayblowinHIGH"), 
+        ("TikTok", "https://tiktok.com/@unpdrum"), 
+        ("YouTube", "https://youtube.com/@unpdrum"), 
+        ("Facebook", "https://facebook.com/unpdrum"), 
+        ("Instagram", "https://instagram.com/@unpdrum"), 
+        ("Kick", "https://kick.com/unpdrum")
+    ]
     for name, url in links:
         st.link_button(name, url, use_container_width=True)
 
