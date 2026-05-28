@@ -1,63 +1,66 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from playwright.async_api import async_playwright
-import asyncio
+import plotly.express as px
 
-st.set_page_config(page_title="Drum's Master Dashboard", page_icon="🥁", layout="wide")
+# 1. Page Configuration
+st.set_page_config(page_title="Drum's Command Center", layout="wide", page_icon="🥁")
 
-st.title("🥁 Drum's Ultimate Stream Stats Dashboard")
-st.markdown("### Total Metrics Across All Platforms")
+# 2. Styling
+st.markdown("""
+    <style>
+    .stApp { background-color: #0e1117; }
+    h1 { color: #ffffff; text-align: center; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- USERNAME CONFIG ---
-TWITCH_NAME = "ustayblowinHIGH"
-UNP_NAME = "unpdrum"
+# 3. Sidebar Links
+st.sidebar.title("🔗 My Links")
+st.sidebar.link_button("Twitch", "https://twitch.tv/ustayblowinHIGH")
+st.sidebar.link_button("TikTok", "https://tiktok.com/@unpdrum")
+st.sidebar.link_button("YouTube", "https://youtube.com/@unpdrum")
+st.sidebar.link_button("Facebook", "https://facebook.com/unpdrum")
+st.sidebar.link_button("Instagram", "https://instagram.com/unpdrum")
+st.sidebar.link_button("Kick", "https://kick.com/unpdrum")
 
-# --- ASYNC TWITCH SCANNER ---
-async def get_twitch_viewers(channel):
-    try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            await page.goto(f"https://www.twitch.tv/{channel}", timeout=10000)
-            await page.wait_for_timeout(3000)
-            selector = 'span[data-a-target="animated-channel-viewers-count"]'
-            viewers = await page.inner_text(selector)
-            await browser.close()
-            return f"{viewers} 🔥"
-    except:
-        return "Offline 💤"
+# 4. Title
+st.title("🥁 DRUM! Command Center")
 
-# --- METRIC CARDS ---
-m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("🟪 Twitch Followers", "1.2K", "+14")
-m2.metric("🟥 YouTube Subs", "840", "+5")
-m3.metric("🟢 Kick Followers", "310", "+22")
-m4.metric("🎵 TikTok Fans", "4.5K", "+110")
-m5.metric("🟦 FB Page Likes", "520", "+3")
+# 5. Data Loading
+@st.cache_data(ttl=60) 
+def load_data():
+    # Public CSV link to your Google Sheet
+    sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRFLd_9rZtKr3eF2vgWViTENOGZTUTirr-fajK2k5IRVL8hR2R4T_rq0Rooi1FbN9-P25SYtjIylAOA/pub?output=csv"
+    df = pd.read_csv(sheet_url)
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'], format='mixed')
+    df = df.sort_values(by='Timestamp', ascending=True)
+    return df
 
-st.divider()
+try:
+    df = load_data()
+    
+    # 6. Display Metrics
+    st.subheader("📊 Live Channel Metrics")
 
-# --- LIVE SCANNER ---
-st.subheader("📡 Real-Time Status")
-if st.button("🚀 Run Live Twitch Scan"):
-    with st.spinner("Pinging Twitch..."):
-        # Running the async function in Streamlit
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(get_twitch_viewers(TWITCH_NAME))
-        st.session_state['twitch_live_stat'] = result
+    if st.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.rerun()
 
-st.info(f"Twitch Status: **{st.session_state.get('twitch_live_stat', 'Not Checked')}**")
+    if df.empty:
+        st.warning("No data found!")
+    else:
+        # Get the latest entry
+        latest = df.loc[df['Timestamp'].idxmax()] 
+        
+        with st.container(border=True):
+            cols = st.columns(len(df.columns) - 1)
+            for i, col_name in enumerate(df.columns[1:]):
+                display_name = col_name.replace(" Followers", "").capitalize()
+                cols[i].metric(display_name, int(latest[col_name]))
 
-st.divider()
+        st.subheader("📈 Growth Trends")
+        fig = px.line(df, x='Timestamp', y=df.columns[1:], markers=True)
+        fig.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig, use_container_width=True)
 
-# --- CHARTS ---
-st.subheader("📈 Multi-Platform Growth History")
-chart_data = pd.DataFrame(
-    np.random.randint(100, 1500, size=(10, 5)),
-    columns=['Twitch', 'YouTube', 'Kick', 'TikTok', 'Facebook']
-)
-st.line_chart(chart_data)
-
-st.dataframe(chart_data, use_container_width=True)
+except Exception as e:
+    st.error(f"Error loading data: {e}")
