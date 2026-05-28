@@ -5,21 +5,18 @@ import plotly.express as px
 # 1. Page Configuration
 st.set_page_config(page_title="Drum's Command Center", layout="wide", page_icon="🥁")
 
-# 2. Permanent Session State
+# 2. Permanent Settings
 if 'accent_color' not in st.session_state:
     st.session_state.accent_color = '#FF0000' # Red
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# 3. Designer CSS (Glassmorphism + Red Theme)
+# 3. Dynamic Styling
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #080808; }}
     [data-testid="stMetric"] {{ background: #161616; padding: 20px; border-radius: 16px; border-left: 6px solid {st.session_state.accent_color}; }}
     [data-testid="stMetricValue"] {{ color: #ffffff; font-weight: 800; font-size: 2rem; }}
     div.stButton > button {{ background: {st.session_state.accent_color}; color: white; border: none; border-radius: 8px; font-weight: bold; width: 100%; }}
-    .stChatMessage {{ border-radius: 12px; }}
+    .stChatInput {{ border-color: {st.session_state.accent_color}; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -49,28 +46,40 @@ with tab1:
         for i, col in enumerate(metrics):
             cols[i % 2].metric(col.replace(" Followers", ""), int(latest[col]))
         
-        st.markdown("### 📈 Growth Trends")
+        st.subheader("📈 Growth Trends")
         fig = px.line(df, x='Timestamp', y=metrics, template="plotly_dark")
         fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=0, r=0, t=30, b=0))
         st.plotly_chart(fig, use_container_width=True)
     except Exception:
-        st.warning("Data loading...")
+        st.warning("Loading data...")
 
 # --- TAB 2: AI ASSISTANT ---
 with tab2:
     st.title("Drum AI")
-    # Display History
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-    # Handle Input
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
     if prompt := st.chat_input("Ask me about your stats..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        response = f"I am analyzing your data regarding: '{prompt}'. Keep up the great work!"
+        # AI Logic
+        df = load_data()
+        latest = df.loc[df['Timestamp'].idxmax()]
+        p = prompt.lower()
+
+        if "hello" in p or "hi" in p:
+            response = "Hello! I'm your Command Center AI. Ask me about your current follower counts or growth trends."
+        elif "stats" in p or "followers" in p or "numbers" in p:
+            response = f"Sure! Your latest stats are: " + ", ".join([f"{col.replace(' Followers', '')}: {int(latest[col])}" for col in df.columns[1:]])
+        else:
+            response = "I can currently report on your follower stats. Try asking 'What are my stats?'"
+
         with st.chat_message("assistant"):
             st.markdown(response)
         st.session_state.messages.append({"role": "assistant", "content": response})
@@ -87,7 +96,6 @@ with tab3:
 # --- TAB 4: SETTINGS ---
 with tab4:
     st.title("⚙️ Customization")
-    new_color = st.color_picker("Brand Color", st.session_state.accent_color)
+    st.session_state.accent_color = st.color_picker("Brand Color", st.session_state.accent_color)
     if st.button("Save & Apply"):
-        st.session_state.accent_color = new_color
         st.rerun()
