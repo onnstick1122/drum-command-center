@@ -5,17 +5,21 @@ import plotly.express as px
 # 1. Page Configuration
 st.set_page_config(page_title="Drum's Command Center", layout="wide", page_icon="🥁")
 
-# 2. PERMANENT COLOR STATE (Defaulted to Red)
+# 2. Permanent Session State
 if 'accent_color' not in st.session_state:
-    st.session_state.accent_color = '#FF0000'
+    st.session_state.accent_color = '#FF0000' # Red
 
-# 3. Dynamic CSS (Refreshes with the app)
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# 3. Designer CSS (Glassmorphism + Red Theme)
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #080808; }}
-    [data-testid="stMetric"] {{ background: #161616; padding: 15px; border-radius: 12px; border-left: 4px solid {st.session_state.accent_color}; }}
-    [data-testid="stMetricValue"] {{ color: #ffffff; }}
-    div.stButton > button {{ background: {st.session_state.accent_color}; color: white; font-weight: bold; border-radius: 8px; }}
+    [data-testid="stMetric"] {{ background: #161616; padding: 20px; border-radius: 16px; border-left: 6px solid {st.session_state.accent_color}; }}
+    [data-testid="stMetricValue"] {{ color: #ffffff; font-weight: 800; font-size: 2rem; }}
+    div.stButton > button {{ background: {st.session_state.accent_color}; color: white; border: none; border-radius: 8px; font-weight: bold; width: 100%; }}
+    .stChatMessage {{ border-radius: 12px; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -45,9 +49,9 @@ with tab1:
         for i, col in enumerate(metrics):
             cols[i % 2].metric(col.replace(" Followers", ""), int(latest[col]))
         
-        st.subheader("Growth Trends")
+        st.markdown("### 📈 Growth Trends")
         fig = px.line(df, x='Timestamp', y=metrics, template="plotly_dark")
-        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=0, r=0, t=30, b=0))
         st.plotly_chart(fig, use_container_width=True)
     except Exception:
         st.warning("Data loading...")
@@ -55,29 +59,25 @@ with tab1:
 # --- TAB 2: AI ASSISTANT ---
 with tab2:
     st.title("Drum AI")
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    
-    # Display chat history
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-    
-    # Process user input
-    if prompt := st.chat_input("Ask about your stats..."):
+    # Display History
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Handle Input
+    if prompt := st.chat_input("Ask me about your stats..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
-        
-        # AI Response
-        response = f"I've received your query: '{prompt}'. I am processing your stream analytics now."
+
+        response = f"I am analyzing your data regarding: '{prompt}'. Keep up the great work!"
         with st.chat_message("assistant"):
             st.markdown(response)
         st.session_state.messages.append({"role": "assistant", "content": response})
 
 # --- TAB 3: LINKS ---
 with tab3:
-    st.title("Quick Links")
+    st.title("🔗 Quick Links")
     links = [("Twitch", "https://twitch.tv/ustayblowinHIGH"), ("TikTok", "https://tiktok.com/@unpdrum"), 
              ("YouTube", "https://youtube.com/@unpdrum"), ("Facebook", "https://facebook.com/unpdrum"), 
              ("Instagram", "https://instagram.com/@unpdrum"), ("Kick", "https://kick.com/unpdrum")]
@@ -86,7 +86,8 @@ with tab3:
 
 # --- TAB 4: SETTINGS ---
 with tab4:
-    st.title("Customization")
-    st.session_state.accent_color = st.color_picker("Brand Color", st.session_state.accent_color)
+    st.title("⚙️ Customization")
+    new_color = st.color_picker("Brand Color", st.session_state.accent_color)
     if st.button("Save & Apply"):
+        st.session_state.accent_color = new_color
         st.rerun()
