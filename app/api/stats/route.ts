@@ -35,14 +35,33 @@ async function fetchLiveCounts(fallbackRow: any) {
       return { p: 'TikTok', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
     })(),
     (async () => {
-      const res = await fetch('https://www.instagram.com/unpdrum/', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
-      const html = await res.text();
-      const match = html.match(/([\d,.]+[KM]?)\s+Followers/i);
-      let v: any = match ? match[1].replace(',', '') : '';
-      if (typeof v === 'string' && v.includes('K')) v = parseFloat(v) * 1000;
-      else if (typeof v === 'string' && v.includes('M')) v = parseFloat(v) * 1000000;
-      const count = parseInt(v);
-      return { p: 'Instagram', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
+      let followers_count = -1;
+      if (process.env.META_ACCESS_TOKEN) {
+        try {
+          const res = await fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username,followers_count}&access_token=${encodeURIComponent(process.env.META_ACCESS_TOKEN)}`, { signal: AbortSignal.timeout(5000) });
+          const data = await res.json();
+          if (data.data) {
+            const igAccount = data.data.find((page: any) => page.instagram_business_account?.username === 'unpdrum') || data.data.find((page: any) => page.instagram_business_account);
+            if (igAccount?.instagram_business_account?.followers_count !== undefined) {
+              followers_count = igAccount.instagram_business_account.followers_count;
+            }
+          }
+        } catch (e) {
+          console.error('Meta API fetch failed', e);
+        }
+      }
+
+      if (typeof followers_count !== 'number' || followers_count <= 0) {
+        const res = await fetch('https://www.instagram.com/unpdrum/', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
+        const html = await res.text();
+        const match = html.match(/([\d,.]+[KM]?)\s+Followers/i);
+        let v: any = match ? match[1].replace(',', '') : '';
+        if (typeof v === 'string' && v.includes('K')) v = parseFloat(v) * 1000;
+        else if (typeof v === 'string' && v.includes('M')) v = parseFloat(v) * 1000000;
+        followers_count = parseInt(v);
+      }
+      
+      return { p: 'Instagram', v: (typeof followers_count === 'number' && !Number.isNaN(followers_count) && followers_count > 0) ? followers_count : -1 };
     })(),
     (async () => {
       const res = await fetch('https://www.facebook.com/profile.php?id=100082025942089', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
