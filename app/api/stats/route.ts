@@ -36,18 +36,45 @@ async function fetchLiveCounts(fallbackRow: any) {
     })(),
     (async () => {
       let followers_count = -1;
-      if (process.env.META_ACCESS_TOKEN) {
+      const token = process.env.META_ACCESS_TOKEN?.trim();
+      
+      if (!token) {
+        sources.InstagramError = "Missing META_ACCESS_TOKEN";
+      } else {
         try {
-          const res = await fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username,followers_count}&access_token=${encodeURIComponent(process.env.META_ACCESS_TOKEN)}`, { signal: AbortSignal.timeout(5000) });
-          const data = await res.json();
-          if (data.data) {
-            const igAccount = data.data.find((page: any) => page.instagram_business_account?.username === 'unpdrum') || data.data.find((page: any) => page.instagram_business_account);
-            if (igAccount?.instagram_business_account?.followers_count !== undefined) {
-              followers_count = igAccount.instagram_business_account.followers_count;
+          const endpoints = [
+            `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username,followers_count}&access_token=${encodeURIComponent(token)}`,
+            `https://graph.facebook.com/v21.0/61590382684347?fields=instagram_business_account{id,username,followers_count}&access_token=${encodeURIComponent(token)}`
+          ];
+
+          for (const url of endpoints) {
+            const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+            const data = await res.json();
+            
+            if (data.error || !data) {
+              sources.InstagramError = JSON.stringify(data.error || data);
+              continue;
+            }
+
+            // Check if it's the /me/accounts list response
+            if (data.data) {
+              const igAccount = data.data.find((page: any) => page.instagram_business_account?.username === 'unpdrum') || data.data.find((page: any) => page.instagram_business_account);
+              if (igAccount?.instagram_business_account?.followers_count !== undefined) {
+                followers_count = igAccount.instagram_business_account.followers_count;
+                break;
+              }
+            } 
+            // Check if it's the direct /61590382684347 response
+            else if (data.instagram_business_account?.followers_count !== undefined) {
+              followers_count = data.instagram_business_account.followers_count;
+              break;
+            } else {
+              sources.InstagramError = JSON.stringify(data);
             }
           }
         } catch (e) {
           console.error('Meta API fetch failed', e);
+          sources.InstagramError = e instanceof Error ? e.message : String(e);
         }
       }
 
