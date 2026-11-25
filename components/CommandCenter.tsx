@@ -162,7 +162,7 @@ export default function CommandCenter() {
       )}
       {activeTab === 'Quick Links' && (
         <div className='grid grid-cols-2 gap-4'>
-            {[ {n: 'Twitch', u: 'https://twitch.tv/ustayblowinHIGH'}, {n: 'TikTok', u: 'https://www.tiktok.com/@unpdrum'}, {n: 'YouTube', u: 'https://www.youtube.com/@unpdrum'}, {n: 'Facebook', u: 'https://www.facebook.com/profile.php?id=100088202594000'}, {n: 'Instagram', u: 'https://www.instagram.com/unpdrum/'}, {n: 'Kick', u: 'https://kick.com/unpdrum'} ].map(l => (
+            {[ {n: 'Twitch', u: 'https://twitch.tv/ustayblowinHIGH'}, {n: 'TikTok', u: 'https://www.tiktok.com/@unpdrum'}, {n: 'YouTube', u: 'https://www.youtube.com/@unpdrum'}, {n: 'Facebook', u: 'https://www.facebook.com/profile.php?id=100082025942089'}, {n: 'Instagram', u: 'https://www.instagram.com/unpdrum/'}, {n: 'Kick', u: 'https://kick.com/unpdrum'} ].map(l => (
                 <a key={l.n} href={l.u} target='_blank' className='p-6 bg-[#111] rounded-xl border border-neutral-800 hover:border-[var(--accent)] text-center text-sm font-bold'>{l.n}</a>
             ))}
         </div>

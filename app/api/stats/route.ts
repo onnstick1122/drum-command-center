@@ -45,7 +45,7 @@ async function fetchLiveCounts(fallbackRow: any) {
       return { p: 'Instagram', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
     })(),
     (async () => {
-      const res = await fetch('https://www.facebook.com/profile.php?id=100088202594000', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
+      const res = await fetch('https://www.facebook.com/profile.php?id=100082025942089', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
       const html = await res.text();
       const match = html.match(/([\d,.]+[KM]?)\s+followers/i);
       let v: any = match ? match[1].replace(',', '') : '';
@@ -120,4 +120,5 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 });
   }
 }
+
 
