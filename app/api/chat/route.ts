@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
     let response;
     let lastError;
-    const modelsToTry = ['gemini-flash-latest', 'gemini-3-flash-preview', 'gemini-2.5-flash'];
+    const modelsToTry = ['gemini-3.0-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-flash-latest'];
 
     for (const modelName of modelsToTry) {
       try {
@@ -51,7 +51,10 @@ export async function POST(req: Request) {
         const discoveryData = await discoveryRes.json();
         const foundModel = discoveryData.models?.find((m: any) => 
           m.supportedGenerationMethods?.includes('generateContent') && 
-          m.name?.toLowerCase().includes('flash')
+          m.name?.toLowerCase().includes('flash') &&
+          !m.name?.includes('2.5') &&
+          !m.name?.includes('2.0') &&
+          !m.name?.includes('1.5')
         );
 
         if (foundModel) {

@@ -18,10 +18,7 @@ export default function CommandCenter() {
 
   useEffect(() => {
     localStorage.removeItem('drum_cmd_pin');
-    const savedPin = sessionStorage.getItem('drum_cmd_pin');
-    if (savedPin) {
-      verifyPin(savedPin);
-    }
+    sessionStorage.removeItem('drum_cmd_pin');
     setAccentColor(localStorage.getItem('drum_accent') || '#FF0000');
     const savedOverrides = localStorage.getItem('drum_count_overrides');
     if (savedOverrides) setOverrides(JSON.parse(savedOverrides));
@@ -35,7 +32,6 @@ export default function CommandCenter() {
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         setIsAuthenticated(false);
-        sessionStorage.removeItem('drum_cmd_pin');
       }, 300000);
     };
 
@@ -62,7 +58,6 @@ export default function CommandCenter() {
         body: JSON.stringify({ pin: inputPin }),
       });
       if (res.ok) {
-        sessionStorage.setItem('drum_cmd_pin', inputPin);
         setPin(inputPin);
         setIsAuthenticated(true);
         return true;
@@ -109,7 +104,6 @@ export default function CommandCenter() {
       });
       const data = await res.json();
       if (res.status === 401) {
-          sessionStorage.removeItem('drum_cmd_pin');
           setIsAuthenticated(false);
           setChat([...newChat, { role: 'assistant' as const, content: 'Session expired. Please re-authenticate.' }]);
       } else {
