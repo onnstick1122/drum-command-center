@@ -1,3 +1,8 @@
+'use client';
+import { useState, useEffect } from 'react';
+import { RefreshCw, BarChart3, MessageSquare, Link as LinkIcon, Settings, Lock, RotateCcw } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+
 function formatAssistantMessage(text: string) {
   if (!text) return null;
   const cleaned = text.replace(/###/g, '').trim();
@@ -79,11 +84,6 @@ function formatAssistantMessage(text: string) {
   );
 }
 
-
-'use client';
-import { useState, useEffect } from 'react';
-import { RefreshCw, BarChart3, MessageSquare, Link as LinkIcon, Settings, Lock, RotateCcw } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 export default function CommandCenter() {
   const [accentColor, setAccentColor] = useState('#FF0000');
