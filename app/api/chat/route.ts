@@ -17,7 +17,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: activeKey });
+    const ai = new GoogleGenAI({ 
+      apiKey: activeKey, 
+      httpOptions: { apiVersion: 'v1beta' } 
+    });
 
     const prompt = `You are Drum AI, a social media growth analyst. 
     Here are the current stats: Latest: ${JSON.stringify(stats.latest)}, Previous: ${JSON.stringify(stats.previous)}.
@@ -26,17 +29,45 @@ export async function POST(req: Request) {
     User Question: ${message}`;
 
     let response;
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-flash-latest',
-        contents: prompt,
-      });
-    } catch (error) {
-      console.error("Primary model gemini-flash-latest failed, falling back to gemini-3-flash-preview:", error);
-      response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-      });
+    let lastError;
+    const modelsToTry = ['gemini-flash-latest', 'gemini-3-flash-preview', 'gemini-2.5-flash'];
+
+    for (const modelName of modelsToTry) {
+      try {
+        response = await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+        });
+        if (response) break;
+      } catch (err) {
+        lastError = err;
+        console.warn(`Model ${modelName} failed, trying next...`);
+      }
+    }
+
+    if (!response) {
+      try {
+        const discoveryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(activeKey)}`);
+        const discoveryData = await discoveryRes.json();
+        const foundModel = discoveryData.models?.find((m: any) => 
+          m.supportedGenerationMethods?.includes('generateContent') && 
+          m.name?.toLowerCase().includes('flash')
+        );
+
+        if (foundModel) {
+          const modelName = foundModel.name.includes('/') ? foundModel.name.split('/').pop() : foundModel.name;
+          response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+          });
+        }
+      } catch (discoveryError) {
+        console.error("Dynamic discovery failed:", discoveryError);
+      }
+    }
+
+    if (!response) {
+      throw lastError || new Error("Failed to generate content with any model");
     }
 
     return NextResponse.json({ reply: response.text || '' });
