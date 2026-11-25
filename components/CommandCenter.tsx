@@ -17,7 +17,8 @@ export default function CommandCenter() {
   const [overrides, setOverrides] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    const savedPin = localStorage.getItem('drum_cmd_pin');
+    localStorage.removeItem('drum_cmd_pin');
+    const savedPin = sessionStorage.getItem('drum_cmd_pin');
     if (savedPin) {
       verifyPin(savedPin);
     }
@@ -27,6 +28,32 @@ export default function CommandCenter() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setIsAuthenticated(false);
+        sessionStorage.removeItem('drum_cmd_pin');
+      }, 300000);
+    };
+
+    if (isAuthenticated) {
+      resetTimer();
+      ['click', 'keydown', 'touchstart'].forEach(event => 
+        window.addEventListener(event, resetTimer)
+      );
+    }
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      ['click', 'keydown', 'touchstart'].forEach(event => 
+        window.removeEventListener(event, resetTimer)
+      );
+    };
+  }, [isAuthenticated]);
+
   const verifyPin = async (inputPin: string) => {
     try {
       const res = await fetch('/api/auth', {
@@ -35,7 +62,7 @@ export default function CommandCenter() {
         body: JSON.stringify({ pin: inputPin }),
       });
       if (res.ok) {
-        localStorage.setItem('drum_cmd_pin', inputPin);
+        sessionStorage.setItem('drum_cmd_pin', inputPin);
         setPin(inputPin);
         setIsAuthenticated(true);
         return true;
@@ -82,7 +109,7 @@ export default function CommandCenter() {
       });
       const data = await res.json();
       if (res.status === 401) {
-          localStorage.removeItem('drum_cmd_pin');
+          sessionStorage.removeItem('drum_cmd_pin');
           setIsAuthenticated(false);
           setChat([...newChat, { role: 'assistant' as const, content: 'Session expired. Please re-authenticate.' }]);
       } else {
@@ -210,7 +237,7 @@ export default function CommandCenter() {
                 <div className='p-6 bg-[#111] rounded-2xl border border-neutral-800'>
                     <div className='flex justify-between items-center mb-4'>
                         <h3 className='text-sm font-bold uppercase tracking-widest'>Accent Color</h3>
-                        <button onClick={() => { setIsAuthenticated(false); localStorage.removeItem('drum_cmd_pin'); }} className='text-[10px] text-neutral-500 hover:text-white'>Lock</button>
+                        <button onClick={() => { setIsAuthenticated(false); sessionStorage.removeItem('drum_cmd_pin'); }} className='text-[10px] text-neutral-500 hover:text-white'>Lock</button>
                     </div>
                     <input type='color' value={accentColor} onChange={e => {setAccentColor(e.target.value); localStorage.setItem('drum_accent', e.target.value)}} className='w-full h-12 rounded cursor-pointer mb-4' />
                     <div className='flex gap-2'>
