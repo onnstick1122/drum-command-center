@@ -2,12 +2,14 @@ import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 
 export async function POST(req: Request) {
-  const { pin, message, stats, apiKey: clientApiKey } = await req.json();
-  const validPin = process.env.APP_PIN || "2001";
-  
-  if (pin !== validPin) {
-    return NextResponse.json({ error: 'Invalid PIN' }, { status: 401 });
+  const pin = req.headers.get('x-app-pin')?.trim();
+  const validPin = process.env.APP_PIN?.trim();
+
+  if (validPin && pin !== validPin) {
+    return NextResponse.json({ error: 'Unauthorized — PIN required for Drum AI' }, { status: 401 });
   }
+
+  const { message, stats, apiKey: clientApiKey } = await req.json();
 
   const activeKey = (clientApiKey && String(clientApiKey).trim()) || process.env.GEMINI_API_KEY;
   if (!activeKey) {
@@ -24,7 +26,7 @@ export async function POST(req: Request) {
     User Question: ${message}`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: prompt,
     });
     return NextResponse.json({ reply: response.text || '' });

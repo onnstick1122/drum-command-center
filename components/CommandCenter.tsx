@@ -7,7 +7,9 @@ export default function CommandCenter() {
   const [accentColor, setAccentColor] = useState('#FF0000');
   const [stats, setStats] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'Dashboard' | 'Drum AI' | 'Quick Links' | 'Settings'>('Dashboard');
-  const [pin, setPin] = useState('2001');
+  const [pin, setPin] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
   const [chat, setChat] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
   const [input, setInput] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -15,12 +17,33 @@ export default function CommandCenter() {
   const [overrides, setOverrides] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    setPin(localStorage.getItem('drum_pin') || '2001');
+    const savedPin = localStorage.getItem('drum_cmd_pin');
+    if (savedPin) {
+      verifyPin(savedPin);
+    }
     setAccentColor(localStorage.getItem('drum_accent') || '#FF0000');
     const savedOverrides = localStorage.getItem('drum_count_overrides');
     if (savedOverrides) setOverrides(JSON.parse(savedOverrides));
     fetchData();
   }, []);
+
+  const verifyPin = async (inputPin: string) => {
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: inputPin }),
+      });
+      if (res.ok) {
+        localStorage.setItem('drum_cmd_pin', inputPin);
+        setPin(inputPin);
+        setIsAuthenticated(true);
+        return true;
+      }
+    } catch (e) { console.error(e); }
+    setIsAuthenticated(false);
+    return false;
+  };
 
   const getEffectiveStats = (data: any) => {
     if (!data) return {};
@@ -47,9 +70,8 @@ export default function CommandCenter() {
       const effectiveLatest = getEffectiveStats(stats?.latest);
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-app-pin': pin },
         body: JSON.stringify({ 
-          pin, 
           message: msg, 
           stats: { 
             latest: effectiveLatest, 
@@ -59,7 +81,13 @@ export default function CommandCenter() {
         }),
       });
       const data = await res.json();
-      setChat([...newChat, { role: 'assistant' as const, content: data.reply || data.error }]);
+      if (res.status === 401) {
+          localStorage.removeItem('drum_cmd_pin');
+          setIsAuthenticated(false);
+          setChat([...newChat, { role: 'assistant' as const, content: 'Session expired. Please re-authenticate.' }]);
+      } else {
+          setChat([...newChat, { role: 'assistant' as const, content: data.reply || data.error }]);
+      }
     } catch { setChat([...newChat, { role: 'assistant' as const, content: 'Error connecting to Drum AI.' }]); }
   };
 
@@ -147,60 +175,74 @@ export default function CommandCenter() {
         </div>
       )}
       {activeTab === 'Drum AI' && (
-        <div className='space-y-4'>
-            <div className='h-80 overflow-y-auto space-y-3 p-4 bg-[#111] rounded-xl border border-neutral-800 mb-4'>
-                {chat.map((m, i) => <div key={i} className={'p-3 rounded-lg text-sm ' + (m.role === 'user' ? 'bg-[var(--accent)] text-white ml-auto w-3/4' : 'bg-[#222] text-neutral-200 w-3/4')}>{m.content}</div>)}
+        !isAuthenticated ? (
+            <div className='flex flex-col items-center justify-center h-80 bg-[#111] rounded-xl border border-neutral-800 p-6 text-center'>
+                <Lock size={48} className='text-[var(--accent)] mb-4' />
+                <h2 className='text-lg font-bold mb-2'>Private Access</h2>
+                <p className='text-sm text-neutral-400 mb-6'>Enter Command PIN to unlock Drum AI & Settings</p>
+                <input type='password' className='w-full max-w-xs bg-[#060606] border border-neutral-700 p-2 mb-4 rounded' placeholder='Enter PIN' onChange={e => verifyPin(e.target.value)} />
             </div>
-            <div className='grid grid-cols-2 gap-2 mb-4'>
-                {['Why did my followers drop or change?', 'Compare latest vs previous stats', 'Which platform is growing fastest?', 'Give me a 7-day follower recovery plan'].map(q => <button key={q} onClick={() => sendMessage(q)} className='text-[10px] p-2 bg-[#111] border border-neutral-700 rounded text-left hover:border-[var(--accent)]'>{q}</button>)}
+        ) : (
+            <div className='space-y-4'>
+                <div className='h-80 overflow-y-auto space-y-3 p-4 bg-[#111] rounded-xl border border-neutral-800 mb-4'>
+                    {chat.map((m, i) => <div key={i} className={'p-3 rounded-lg text-sm ' + (m.role === 'user' ? 'bg-[var(--accent)] text-white ml-auto w-3/4' : 'bg-[#222] text-neutral-200 w-3/4')}>{m.content}</div>)}
+                </div>
+                <div className='grid grid-cols-2 gap-2 mb-4'>
+                    {['Why did my followers drop or change?', 'Compare latest vs previous stats', 'Which platform is growing fastest?', 'Give me a 7-day follower recovery plan'].map(q => <button key={q} onClick={() => sendMessage(q)} className='text-[10px] p-2 bg-[#111] border border-neutral-700 rounded text-left hover:border-[var(--accent)]'>{q}</button>)}
+                </div>
+                <div className='flex gap-2'>
+                    <input value={input} onChange={e => setInput(e.target.value)} className='flex-1 bg-[#111] border border-neutral-700 p-2 rounded text-sm' placeholder='Ask Drum AI...' />
+                    <button onClick={() => sendMessage(input)} className='bg-[var(--accent)] px-4 py-2 rounded text-sm font-bold'>Send</button>
+                </div>
             </div>
-            <div className='flex gap-2'>
-                <input value={input} onChange={e => setInput(e.target.value)} className='flex-1 bg-[#111] border border-neutral-700 p-2 rounded text-sm' placeholder='Ask Drum AI...' />
-                <button onClick={() => sendMessage(input)} className='bg-[var(--accent)] px-4 py-2 rounded text-sm font-bold'>Send</button>
-            </div>
-        </div>
-      )}
-      {activeTab === 'Quick Links' && (
-        <div className='grid grid-cols-2 gap-4'>
-            {[ {n: 'Twitch', u: 'https://twitch.tv/ustayblowinHIGH'}, {n: 'TikTok', u: 'https://www.tiktok.com/@unpdrum'}, {n: 'YouTube', u: 'https://www.youtube.com/@unpdrum'}, {n: 'Facebook', u: 'https://www.facebook.com/profile.php?id=100082025942089'}, {n: 'Instagram', u: 'https://www.instagram.com/unpdrum/'}, {n: 'Kick', u: 'https://kick.com/unpdrum'} ].map(l => (
-                <a key={l.n} href={l.u} target='_blank' className='p-6 bg-[#111] rounded-xl border border-neutral-800 hover:border-[var(--accent)] text-center text-sm font-bold'>{l.n}</a>
-            ))}
-        </div>
+        )
       )}
       {activeTab === 'Settings' && (
-        <div className='space-y-6'>
-          <div className='p-6 bg-[#111] rounded-2xl border border-neutral-800'>
-            <h3 className='mb-4 text-sm font-bold uppercase tracking-widest'>Accent Color</h3>
-            <input type='color' value={accentColor} onChange={e => {setAccentColor(e.target.value); localStorage.setItem('drum_accent', e.target.value)}} className='w-full h-12 rounded cursor-pointer mb-4' />
-            <div className='flex gap-2'>
-              {['#FF0000', '#B91C1C', '#DC2626', '#F59E0B', '#FFFFFF'].map(c => (
-                <button key={c} onClick={() => { setAccentColor(c); localStorage.setItem('drum_accent', c); }} className='w-8 h-8 rounded-full border border-neutral-700' style={{ background: c }} />
-              ))}
+        !isAuthenticated ? (
+            <div className='flex flex-col items-center justify-center h-80 bg-[#111] rounded-xl border border-neutral-800 p-6 text-center'>
+                <Lock size={48} className='text-[var(--accent)] mb-4' />
+                <h2 className='text-lg font-bold mb-2'>Private Access</h2>
+                <p className='text-sm text-neutral-400 mb-6'>Enter Command PIN to unlock Drum AI & Settings</p>
+                <input type='password' className='w-full max-w-xs bg-[#060606] border border-neutral-700 p-2 mb-4 rounded' placeholder='Enter PIN' onChange={e => verifyPin(e.target.value)} />
             </div>
-          </div>
-          <div className='p-6 bg-[#111] rounded-2xl border border-neutral-800'>
-            <h3 className='mb-4 text-sm font-bold uppercase tracking-widest'>Exact Follower Count Overrides</h3>
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-                {platforms.map(p => (
-                    <div key={p} className='flex items-center gap-2'>
-                        <span className='w-20 text-xs text-neutral-400'>{p}</span>
-                        <input type='number' placeholder={stats?.latest?.[p] || '0'} value={overrides[p] ?? ''} onChange={e => {
-                            const val = parseInt(e.target.value) || 0;
-                            const newOverrides = { ...overrides, [p]: val };
-                            setOverrides(newOverrides);
-                            localStorage.setItem('drum_count_overrides', JSON.stringify(newOverrides));
-                        }} className='bg-[#060606] border border-neutral-700 p-1 rounded text-xs w-full' />
-                        {overrides[p] !== undefined && <button onClick={() => {
-                            const newOverrides = { ...overrides };
-                            delete newOverrides[p];
-                            setOverrides(newOverrides);
-                            localStorage.setItem('drum_count_overrides', JSON.stringify(newOverrides));
-                        }} className='p-1 hover:text-red-500'><RotateCcw size={12} /></button>}
+        ) : (
+            <div className='space-y-6'>
+                <div className='p-6 bg-[#111] rounded-2xl border border-neutral-800'>
+                    <div className='flex justify-between items-center mb-4'>
+                        <h3 className='text-sm font-bold uppercase tracking-widest'>Accent Color</h3>
+                        <button onClick={() => { setIsAuthenticated(false); localStorage.removeItem('drum_cmd_pin'); }} className='text-[10px] text-neutral-500 hover:text-white'>Lock</button>
                     </div>
-                ))}
+                    <input type='color' value={accentColor} onChange={e => {setAccentColor(e.target.value); localStorage.setItem('drum_accent', e.target.value)}} className='w-full h-12 rounded cursor-pointer mb-4' />
+                    <div className='flex gap-2'>
+                    {['#FF0000', '#B91C1C', '#DC2626', '#F59E0B', '#FFFFFF'].map(c => (
+                        <button key={c} onClick={() => { setAccentColor(c); localStorage.setItem('drum_accent', c); }} className='w-8 h-8 rounded-full border border-neutral-700' style={{ background: c }} />
+                    ))}
+                    </div>
+                </div>
+                <div className='p-6 bg-[#111] rounded-2xl border border-neutral-800'>
+                    <h3 className='mb-4 text-sm font-bold uppercase tracking-widest'>Exact Follower Count Overrides</h3>
+                    <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                        {platforms.map(p => (
+                            <div key={p} className='flex items-center gap-2'>
+                                <span className='w-20 text-xs text-neutral-400'>{p}</span>
+                                <input type='number' placeholder={stats?.latest?.[p] || '0'} value={overrides[p] ?? ''} onChange={e => {
+                                    const val = parseInt(e.target.value) || 0;
+                                    const newOverrides = { ...overrides, [p]: val };
+                                    setOverrides(newOverrides);
+                                    localStorage.setItem('drum_count_overrides', JSON.stringify(newOverrides));
+                                }} className='bg-[#060606] border border-neutral-700 p-1 rounded text-xs w-full' />
+                                {overrides[p] !== undefined && <button onClick={() => {
+                                    const newOverrides = { ...overrides };
+                                    delete newOverrides[p];
+                                    setOverrides(newOverrides);
+                                    localStorage.setItem('drum_count_overrides', JSON.stringify(newOverrides));
+                                }} className='p-1 hover:text-red-500'><RotateCcw size={12} /></button>}
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
-          </div>
-        </div>
+        )
       )}
     </div>
   );
