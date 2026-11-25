@@ -17,6 +17,7 @@ export async function POST(req: Request) {
   }
 
   const prompt = `You are Drum AI, a social media growth analyst. 
+  Keep every response under 110 words total. Start with 1 bold headline sentence, then 3 to 4 short bullet points (- ..., 1 short sentence per bullet) with bold key stats. Never write long paragraphs or ### headers.
   Here are the current stats: Latest: ${JSON.stringify(stats.latest)}, Previous: ${JSON.stringify(stats.previous)}.
   Here is the recent history: ${JSON.stringify(stats.history)}.
   Analyze which platforms gained or lost followers, explain potential reasons for fluctuations, and provide concrete, actionable steps for recovery and growth.
@@ -96,7 +97,7 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           model: 'llama-3.1-8b-instant',
           messages: [
-            { role: 'system', content: 'You are Drum AI, a social media growth analyst.' },
+            { role: 'system', content: 'You are Drum AI, a social media growth analyst. Keep every response under 110 words total. Start with 1 bold headline sentence, then 3 to 4 short bullet points (- ..., 1 short sentence per bullet) with bold key stats. Never write long paragraphs or ### headers.' },
             { role: 'user', content: prompt }
           ]
         })
@@ -121,5 +122,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ reply: replyText });
 }
+
 
 

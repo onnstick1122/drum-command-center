@@ -1,3 +1,85 @@
+function formatAssistantMessage(text: string) {
+  if (!text) return null;
+  const cleaned = text.replace(/###/g, '').trim();
+  const lines = cleaned.split('\n');
+
+  const renderFormattedText = (lineText: string) => {
+    const parts = lineText.split(/(\*\*.*?\*\*)/g);
+    return parts.map((part, idx) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        const inner = part.slice(2, -2);
+        return <strong key={idx} className="font-bold text-white">{inner}</strong>;
+      }
+      return part;
+    });
+  };
+
+  const bulletLines: { text: string; subBullets?: string[] }[] = [];
+  const otherLines: string[] = [];
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      bulletLines.push({ text: trimmed.replace(/^[-*]\s+/, '') });
+    } else if (trimmed.startsWith('  - ') || trimmed.startsWith('  * ')) {
+      const cleanedSub = trimmed.replace(/^[-*]\s+/, '');
+      if (bulletLines.length > 0) {
+        if (!bulletLines[bulletLines.length - 1].subBullets) {
+          bulletLines[bulletLines.length - 1].subBullets = [];
+        }
+        bulletLines[bulletLines.length - 1].subBullets?.push(cleanedSub);
+      } else {
+        otherLines.push(trimmed);
+      }
+    } else if (trimmed) {
+      otherLines.push(line);
+    }
+  });
+
+  return (
+    <div className="space-y-3">
+      {otherLines.map((line, idx) => {
+        if (idx === 0 && !line.startsWith('-') && !line.startsWith('*')) {
+          return (
+            <div key={idx} className="font-bold text-white text-base">
+              {renderFormattedText(line)}
+            </div>
+          );
+        }
+        return (
+          <div key={idx} className="leading-relaxed">
+            {renderFormattedText(line)}
+          </div>
+        );
+      })}
+
+      {bulletLines.length > 0 && (
+        <ul className="space-y-2 my-2">
+          {bulletLines.map((b, idx) => (
+            <li key={idx} className="flex items-start gap-2.5 leading-relaxed">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--accent)] mt-2 shrink-0" />
+              <div className="flex-1">
+                <div>{renderFormattedText(b.text)}</div>
+                {b.subBullets && b.subBullets.length > 0 && (
+                  <ul className="space-y-1 mt-1 pl-4">
+                    {b.subBullets.map((sub, sIdx) => (
+                      <li key={sIdx} className="flex items-start gap-2 text-neutral-400 text-xs">
+                        <span className="inline-block w-1 h-1 rounded-full bg-neutral-500 mt-1.5 shrink-0" />
+                        <span>{renderFormattedText(sub)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+
 'use client';
 import { useState, useEffect } from 'react';
 import { RefreshCw, BarChart3, MessageSquare, Link as LinkIcon, Settings, Lock, RotateCcw } from 'lucide-react';
@@ -206,7 +288,18 @@ export default function CommandCenter() {
         ) : (
             <div className='space-y-4'>
                 <div className='h-80 overflow-y-auto space-y-3 p-4 bg-[#111] rounded-xl border border-neutral-800 mb-4'>
-                    {chat.map((m, i) => <div key={i} className={'p-3 rounded-lg text-sm ' + (m.role === 'user' ? 'bg-[var(--accent)] text-white ml-auto w-3/4' : 'bg-[#222] text-neutral-200 w-3/4')}>{m.content}</div>)}
+                    {chat.map((m, i) => (
+                      <div 
+                        key={i} 
+                        className={
+                          m.role === 'user' 
+                            ? 'p-3 rounded-lg text-sm bg-[var(--accent)] text-white ml-auto w-3/4' 
+                            : 'p-4 rounded-xl text-sm bg-[#161616] border border-white/10 text-neutral-200 w-3/4 leading-relaxed'
+                        }
+                      >
+                        {m.role === 'assistant' ? formatAssistantMessage(m.content) : m.content}
+                      </div>
+                    ))}
                 </div>
                 <div className='grid grid-cols-2 gap-2 mb-4'>
                     {['Why did my followers drop or change?', 'Compare latest vs previous stats', 'Which platform is growing fastest?', 'Give me a 7-day follower recovery plan'].map(q => <button key={q} onClick={() => sendMessage(q)} className='text-[10px] p-2 bg-[#111] border border-neutral-700 rounded text-left hover:border-[var(--accent)]'>{q}</button>)}
