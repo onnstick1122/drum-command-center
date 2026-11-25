@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { RefreshCw, BarChart3, MessageSquare, Link as LinkIcon, Settings, Lock } from 'lucide-react';
-import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { RefreshCw, BarChart3, MessageSquare, Link as LinkIcon, Settings, Lock, RotateCcw } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 export default function CommandCenter() {
   const [accentColor, setAccentColor] = useState('#FF0000');
@@ -12,12 +12,24 @@ export default function CommandCenter() {
   const [input, setInput] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState('Total');
+  const [overrides, setOverrides] = useState<Record<string, number>>({});
 
   useEffect(() => {
     setPin(localStorage.getItem('drum_pin') || '2001');
     setAccentColor(localStorage.getItem('drum_accent') || '#FF0000');
+    const savedOverrides = localStorage.getItem('drum_count_overrides');
+    if (savedOverrides) setOverrides(JSON.parse(savedOverrides));
     fetchData();
   }, []);
+
+  const getEffectiveStats = (data: any) => {
+    if (!data) return {};
+    const effective = { ...data };
+    Object.keys(overrides).forEach(p => {
+        if (overrides[p] !== undefined) effective[p] = overrides[p];
+    });
+    return effective;
+  };
 
   const fetchData = async () => {
     try {
@@ -32,10 +44,19 @@ export default function CommandCenter() {
     setChat(newChat);
     setInput('');
     try {
+      const effectiveLatest = getEffectiveStats(stats?.latest);
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, message: msg, stats: { latest: stats?.latest, previous: stats?.previous, history: stats?.rows?.slice(-15) } }),
+        body: JSON.stringify({ 
+          pin, 
+          message: msg, 
+          stats: { 
+            latest: effectiveLatest, 
+            previous: stats?.previous, 
+            history: stats?.rows 
+          } 
+        }),
       });
       const data = await res.json();
       setChat([...newChat, { role: 'assistant' as const, content: data.reply || data.error }]);
@@ -43,11 +64,20 @@ export default function CommandCenter() {
   };
 
   const platforms = ['Twitch', 'Facebook', 'Instagram', 'TikTok', 'YouTube', 'Kick'];
-  const latest = stats?.latest || {};
+  const latest = getEffectiveStats(stats?.latest || {});
   const previous = stats?.previous || {};
   const totalFollowers = platforms.reduce((a, b) => a + (latest[b] || 0), 0);
   const prevTotal = platforms.reduce((a, b) => a + (previous[b] || 0), 0);
   const delta = totalFollowers - prevTotal;
+
+  const chartData = stats?.rows?.map((row: any) => {
+    const rowObj = { ...row };
+    if (row === stats.rows[stats.rows.length - 1]) {
+        platforms.forEach(p => { if (overrides[p] !== undefined) rowObj[p] = overrides[p]; });
+    }
+    rowObj['Total'] = platforms.reduce((a, b) => a + (rowObj[b] || 0), 0);
+    return rowObj;
+  }) || [];
 
   return (
     <div className='min-h-screen bg-[#060606] text-white p-4 font-sans' style={{ '--accent': accentColor } as any}>
@@ -94,15 +124,23 @@ export default function CommandCenter() {
               </a>
             ))}
           </div>
-          <div className='h-64 bg-[#111] p-4 rounded-xl border border-neutral-800'>
+          <div className='h-[300px] bg-[#111] p-4 rounded-xl border border-neutral-800'>
             <div className='flex gap-2 mb-4 overflow-x-auto'>
-                {['Total', ...platforms].map(p => <button key={p} onClick={() => setFilter(p)} className={'px-2 py-1 text-[10px] rounded ' + (filter === p ? 'bg-[var(--accent)]' : 'bg-[#222]')}>{p}</button>)}
+                {['Total', ...platforms].map(p => <button key={p} onClick={() => setFilter(p)} className={'px-2 py-1 text-[10px] rounded ' + (filter === p ? 'bg-[var(--accent)] text-white' : 'bg-[#222] text-neutral-400')}>{p}</button>)}
             </div>
-            <ResponsiveContainer width='100%' height='80%'>
-              <AreaChart data={stats.rows}>
+            <ResponsiveContainer width='100%' height={200}>
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id='colorVal' x1='0' y1='0' x2='0' y2='1'>
+                    <stop offset='5%' stopColor={accentColor} stopOpacity={0.3}/>
+                    <stop offset='95%' stopColor={accentColor} stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray='3 3' stroke='#333' />
                 <XAxis dataKey='timestamp' hide />
-                <Tooltip contentStyle={{ backgroundColor: '#060606', border: '1px solid #333' }} />
-                <Area type='monotone' dataKey={filter === 'Total' ? 'Total' : filter} stroke={accentColor} fill={accentColor} fillOpacity={0.2} />
+                <YAxis hide domain={['auto', 'auto']} />
+                <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', borderColor: accentColor }} />
+                <Area type='monotone' dataKey={filter} stroke={accentColor} fill='url(#colorVal)' strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -130,13 +168,37 @@ export default function CommandCenter() {
         </div>
       )}
       {activeTab === 'Settings' && (
-        <div className='p-6 bg-[#111] rounded-2xl border border-neutral-800'>
-          <h3 className='mb-4 text-sm font-bold uppercase tracking-widest'>Accent Color</h3>
-          <input type='color' value={accentColor} onChange={e => {setAccentColor(e.target.value); localStorage.setItem('drum_accent', e.target.value)}} className='w-full h-12 rounded cursor-pointer mb-4' />
-          <div className='flex gap-2'>
-            {['#FF0000', '#B91C1C', '#DC2626', '#F59E0B', '#FFFFFF'].map(c => (
-              <button key={c} onClick={() => { setAccentColor(c); localStorage.setItem('drum_accent', c); }} className='w-8 h-8 rounded-full border border-neutral-700' style={{ background: c }} />
-            ))}
+        <div className='space-y-6'>
+          <div className='p-6 bg-[#111] rounded-2xl border border-neutral-800'>
+            <h3 className='mb-4 text-sm font-bold uppercase tracking-widest'>Accent Color</h3>
+            <input type='color' value={accentColor} onChange={e => {setAccentColor(e.target.value); localStorage.setItem('drum_accent', e.target.value)}} className='w-full h-12 rounded cursor-pointer mb-4' />
+            <div className='flex gap-2'>
+              {['#FF0000', '#B91C1C', '#DC2626', '#F59E0B', '#FFFFFF'].map(c => (
+                <button key={c} onClick={() => { setAccentColor(c); localStorage.setItem('drum_accent', c); }} className='w-8 h-8 rounded-full border border-neutral-700' style={{ background: c }} />
+              ))}
+            </div>
+          </div>
+          <div className='p-6 bg-[#111] rounded-2xl border border-neutral-800'>
+            <h3 className='mb-4 text-sm font-bold uppercase tracking-widest'>Exact Follower Count Overrides</h3>
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                {platforms.map(p => (
+                    <div key={p} className='flex items-center gap-2'>
+                        <span className='w-20 text-xs text-neutral-400'>{p}</span>
+                        <input type='number' placeholder={stats?.latest?.[p] || '0'} value={overrides[p] ?? ''} onChange={e => {
+                            const val = parseInt(e.target.value) || 0;
+                            const newOverrides = { ...overrides, [p]: val };
+                            setOverrides(newOverrides);
+                            localStorage.setItem('drum_count_overrides', JSON.stringify(newOverrides));
+                        }} className='bg-[#060606] border border-neutral-700 p-1 rounded text-xs w-full' />
+                        {overrides[p] !== undefined && <button onClick={() => {
+                            const newOverrides = { ...overrides };
+                            delete newOverrides[p];
+                            setOverrides(newOverrides);
+                            localStorage.setItem('drum_count_overrides', JSON.stringify(newOverrides));
+                        }} className='p-1 hover:text-red-500'><RotateCcw size={12} /></button>}
+                    </div>
+                ))}
+            </div>
           </div>
         </div>
       )}

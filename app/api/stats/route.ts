@@ -8,26 +8,31 @@ async function fetchLiveCounts(fallbackRow: any) {
     (async () => {
       const res = await fetch('https://kick.com/api/v2/channels/unpdrum', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
       const data = await res.json();
-      return { p: 'Kick', v: data.followers_count };
+      const count = data.followers_count;
+      return { p: 'Kick', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
     })(),
     (async () => {
       const res = await fetch('https://decapi.me/twitch/followcount/ustayblowinHIGH', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
-      return { p: 'Twitch', v: parseInt(await res.text()) };
+      const count = parseInt(await res.text());
+      return { p: 'Twitch', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
     })(),
     (async () => {
       const res = await fetch('https://www.youtube.com/@unpdrum', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
       const html = await res.text();
-      const match = html.match(/"subscriberCountText":{"simpleText":"([\d.]+[K|M]?)\s+subscribers?"}/);
-      let v: any = match ? match[1] : '';
+      const match = html.match(/"subscriberCountText":{"simpleText":"([\d.,]+\s*[KMB]?)\s+subscribers?"}/) || html.match(/([\d.,]+\s*[KMB]?)\s+subscribers/i);
+      let v: any = match ? match[1].replace(',', '') : '';
       if (typeof v === 'string' && v.includes('K')) v = parseFloat(v) * 1000;
       else if (typeof v === 'string' && v.includes('M')) v = parseFloat(v) * 1000000;
-      return { p: 'YouTube', v: parseInt(v) || 0 };
+      else if (typeof v === 'string' && v.includes('B')) v = parseFloat(v) * 1000000000;
+      const count = parseInt(v);
+      return { p: 'YouTube', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
     })(),
     (async () => {
       const res = await fetch('https://www.tiktok.com/@unpdrum', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
       const html = await res.text();
       const match = html.match(/"followerCount":(\d+)/);
-      return { p: 'TikTok', v: match ? parseInt(match[1]) : 0 };
+      const count = match ? parseInt(match[1]) : -1;
+      return { p: 'TikTok', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
     })(),
     (async () => {
       const res = await fetch('https://www.instagram.com/unpdrum/', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
@@ -36,7 +41,8 @@ async function fetchLiveCounts(fallbackRow: any) {
       let v: any = match ? match[1].replace(',', '') : '';
       if (typeof v === 'string' && v.includes('K')) v = parseFloat(v) * 1000;
       else if (typeof v === 'string' && v.includes('M')) v = parseFloat(v) * 1000000;
-      return { p: 'Instagram', v: parseInt(v) || 0 };
+      const count = parseInt(v);
+      return { p: 'Instagram', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
     })(),
     (async () => {
       const res = await fetch('https://www.facebook.com/profile.php?id=100088202594000', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
@@ -45,18 +51,20 @@ async function fetchLiveCounts(fallbackRow: any) {
       let v: any = match ? match[1].replace(',', '') : '';
       if (typeof v === 'string' && v.includes('K')) v = parseFloat(v) * 1000;
       else if (typeof v === 'string' && v.includes('M')) v = parseFloat(v) * 1000000;
-      return { p: 'Facebook', v: parseInt(v) || 0 };
+      const count = parseInt(v);
+      return { p: 'Facebook', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
     })()
   ]);
 
   const liveCounts: Record<string, number> = {};
   results.forEach((r, i) => {
-    if (r.status === 'fulfilled' && r.value.v >= 0 && !isNaN(r.value.v)) {
-      liveCounts[r.value.p] = r.value.v;
-      sources[r.value.p] = 'live';
+    const platforms = ['Kick', 'Twitch', 'YouTube', 'TikTok', 'Instagram', 'Facebook'];
+    const p = platforms[i];
+    if (r.status === 'fulfilled' && r.value.v > 0) {
+      liveCounts[p] = r.value.v;
+      sources[p] = 'live';
     } else {
-      const p = ['Kick', 'Twitch', 'YouTube', 'TikTok', 'Instagram', 'Facebook'][i];
-      liveCounts[p] = fallbackRow[p] || 0;
+      liveCounts[p] = Number(fallbackRow?.[p]) || 0;
       sources[p] = 'fallback';
     }
   });
@@ -83,7 +91,15 @@ export async function GET() {
     });
 
     const { liveCounts, sources } = await fetchLiveCounts(rows[rows.length - 1]);
-    const liveSnapshot = { 
+    const liveSnapshot: { 
+        timestamp: string; 
+        Twitch: number; 
+        Facebook: number; 
+        Instagram: number; 
+        TikTok: number; 
+        YouTube: number; 
+        Kick: number; 
+    } = { 
         timestamp: 'Live Now', 
         Twitch: liveCounts.Twitch,
         Facebook: liveCounts.Facebook,
