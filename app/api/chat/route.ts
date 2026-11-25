@@ -12,7 +12,10 @@ export async function POST(req: Request) {
   const { message, stats, apiKey: clientApiKey } = await req.json();
 
   const activeKey = (clientApiKey && String(clientApiKey).trim()) || process.env.GEMINI_API_KEY;
-  if (!activeKey && !process.env.GROQ_API_KEY) {
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
+
+  if (!activeKey && !openRouterKey && !groqKey) {
     return NextResponse.json({ error: 'Missing API key' }, { status: 400 });
   }
 
@@ -26,7 +29,7 @@ export async function POST(req: Request) {
   let replyText = '';
 
   // 1. Try Groq FIRST if GROQ_API_KEY is set
-  if (process.env.GROQ_API_KEY) {
+  if (groqKey) {
     const groqModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
     for (const model of groqModels) {
       try {
@@ -34,7 +37,7 @@ export async function POST(req: Request) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+            'Authorization': `Bearer ${groqKey}`
           },
           body: JSON.stringify({
             model: model,
@@ -59,7 +62,34 @@ export async function POST(req: Request) {
     }
   }
 
-  // 2. Fall back to Gemini if Groq failed or GROQ_API_KEY is missing
+  // 2. Try OpenRouter if configured and no reply yet
+  if (!replyText && openRouterKey) {
+    try {
+      const openRouterRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openRouterKey}`
+        },
+        body: JSON.stringify({
+          model: 'meta-llama/llama-3.3-70b-instruct:free',
+          messages: [
+            { role: 'system', content: 'You are Drum AI, a social media growth analyst. Keep every response under 110 words total. Start with 1 bold headline sentence, then 3 to 4 short bullet points (- ..., 1 short sentence per bullet) with bold key stats. Never write long paragraphs or ### headers.' },
+            { role: 'user', content: prompt }
+          ]
+        }),
+        signal: AbortSignal.timeout(7000)
+      });
+      if (openRouterRes.ok) {
+        const data = await openRouterRes.json();
+        replyText = data.choices?.[0]?.message?.content || '';
+      }
+    } catch (e) {
+      console.warn('OpenRouter error:', e);
+    }
+  }
+
+  // 3. Fall back to Gemini if still no reply
   if (!replyText && activeKey) {
     try {
       const ai = new GoogleGenAI({ 
@@ -67,15 +97,30 @@ export async function POST(req: Request) {
         httpOptions: { apiVersion: 'v1beta' } 
       });
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite-preview',
-        contents: prompt,
-      });
-      if (response && response.text) {
-        replyText = response.text;
+      const geminiModels = [
+        'gemini-3.5-flash-lite',
+        'gemini-3.5-flash-lite-preview',
+        'gemini-3.1-flash-lite-preview',
+        'gemini-3-flash-preview'
+      ];
+
+      for (const model of geminiModels) {
+        try {
+          // Wrap Gemini call with AbortSignal.timeout(7000) or race if needed, or rely on internal/sdk timeout
+          const response = await ai.models.generateContent({
+            model: model,
+            contents: prompt,
+          });
+          if (response && response.text) {
+            replyText = response.text;
+            break;
+          }
+        } catch (mErr) {
+          console.warn(`Gemini model ${model} failed:`, mErr);
+        }
       }
     } catch (geminiErr) {
-      console.error("Gemini fallback error:", geminiErr);
+      console.error("Gemini global error:", geminiErr);
     }
   }
 
@@ -87,6 +132,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ reply: replyText });
 }
+
 
 
 
