@@ -12,8 +12,8 @@ export async function POST(req: Request) {
   const { message, stats, apiKey: clientApiKey } = await req.json();
 
   const activeKey = (clientApiKey && String(clientApiKey).trim()) || process.env.GEMINI_API_KEY;
-  if (!activeKey) {
-    return NextResponse.json({ error: 'Missing Gemini API key' }, { status: 400 });
+  if (!activeKey && !process.env.GROQ_API_KEY) {
+    return NextResponse.json({ error: 'Missing API key' }, { status: 400 });
   }
 
   const prompt = `You are Drum AI, a social media growth analyst. 
@@ -25,92 +25,57 @@ export async function POST(req: Request) {
 
   let replyText = '';
 
-  try {
-    const ai = new GoogleGenAI({ 
-      apiKey: activeKey, 
-      httpOptions: { apiVersion: 'v1beta' } 
-    });
-
-    const modelsToTry = ['gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
-    let response;
-
-    for (const modelName of modelsToTry) {
+  // 1. Try Groq FIRST if GROQ_API_KEY is set
+  if (process.env.GROQ_API_KEY) {
+    const groqModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+    for (const model of groqModels) {
       try {
-        response = await ai.models.generateContent({
-          model: modelName,
-          contents: prompt,
+        const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: 'system', content: 'You are Drum AI, a social media growth analyst. Keep every response under 110 words total. Start with 1 bold headline sentence, then 3 to 4 short bullet points (- ..., 1 short sentence per bullet) with bold key stats. Never write long paragraphs or ### headers.' },
+              { role: 'user', content: prompt }
+            ]
+          }),
+          signal: AbortSignal.timeout(7000)
         });
-        if (response && response.text) {
-          replyText = response.text;
-          break;
+
+        if (groqRes.ok) {
+          const groqData = await groqRes.json();
+          replyText = groqData.choices?.[0]?.message?.content || '';
+          if (replyText) break;
+        } else {
+          console.warn(`Groq model ${model} failed with status:`, groqRes.status);
         }
-      } catch (err) {
-        console.warn(`Model ${modelName} failed, trying next...`, err);
+      } catch (groqErr) {
+        console.warn(`Groq model ${model} error:`, groqErr);
       }
     }
-
-    if (!replyText) {
-      try {
-        const discoveryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(activeKey)}`);
-        const discoveryData = await discoveryRes.json();
-        const foundModels = discoveryData.models?.filter((m: any) => 
-          m.supportedGenerationMethods?.includes('generateContent') && 
-          m.name?.toLowerCase().includes('flash') &&
-          !m.name?.includes('2.5') &&
-          !m.name?.includes('2.0') &&
-          !m.name?.includes('1.5')
-        ) || [];
-
-        for (const foundModel of foundModels) {
-          try {
-            const modelName = foundModel.name.includes('/') ? foundModel.name.split('/').pop() : foundModel.name;
-            response = await ai.models.generateContent({
-              model: modelName,
-              contents: prompt,
-            });
-            if (response && response.text) {
-              replyText = response.text;
-              break;
-            }
-          } catch (discoveryModelErr) {
-            console.warn(`Discovered model failed:`, discoveryModelErr);
-          }
-        }
-      } catch (discoveryError) {
-        console.error("Dynamic discovery failed:", discoveryError);
-      }
-    }
-  } catch (geminiGlobalErr) {
-    console.error("Gemini global execution error:", geminiGlobalErr);
   }
 
-  // If all Gemini attempts failed, try Groq fallback if GROQ_API_KEY is set
-  if (!replyText && process.env.GROQ_API_KEY) {
+  // 2. Fall back to Gemini if Groq failed or GROQ_API_KEY is missing
+  if (!replyText && activeKey) {
     try {
-      console.warn("Falling back to Groq API...");
-      const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          messages: [
-            { role: 'system', content: 'You are Drum AI, a social media growth analyst. Keep every response under 110 words total. Start with 1 bold headline sentence, then 3 to 4 short bullet points (- ..., 1 short sentence per bullet) with bold key stats. Never write long paragraphs or ### headers.' },
-            { role: 'user', content: prompt }
-          ]
-        })
+      const ai = new GoogleGenAI({ 
+        apiKey: activeKey, 
+        httpOptions: { apiVersion: 'v1beta' } 
       });
 
-      if (groqRes.ok) {
-        const groqData = await groqRes.json();
-        replyText = groqData.choices?.[0]?.message?.content || '';
-      } else {
-        console.error("Groq fallback failed with status:", groqRes.status);
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite-preview',
+        contents: prompt,
+      });
+      if (response && response.text) {
+        replyText = response.text;
       }
-    } catch (groqErr) {
-      console.error("Groq fallback error:", groqErr);
+    } catch (geminiErr) {
+      console.error("Gemini fallback error:", geminiErr);
     }
   }
 
@@ -122,6 +87,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ reply: replyText });
 }
+
 
 
 
