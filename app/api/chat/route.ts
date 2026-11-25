@@ -25,10 +25,20 @@ export async function POST(req: Request) {
     Analyze which platforms gained or lost followers, explain potential reasons for fluctuations, and provide concrete, actionable steps for recovery and growth.
     User Question: ${message}`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-    });
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-flash-latest',
+        contents: prompt,
+      });
+    } catch (error) {
+      console.error("Primary model gemini-flash-latest failed, falling back to gemini-3-flash-preview:", error);
+      response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+      });
+    }
+
     return NextResponse.json({ reply: response.text || '' });
   } catch (error: any) {
     console.error("AI Error:", error);
