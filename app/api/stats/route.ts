@@ -42,35 +42,26 @@ async function fetchLiveCounts(fallbackRow: any) {
         sources.InstagramError = "Missing META_ACCESS_TOKEN";
       } else {
         try {
-          const endpoints = [
+          const urls = [
             `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username,followers_count}&access_token=${encodeURIComponent(token)}`,
-            `https://graph.facebook.com/v21.0/61590382684347?fields=instagram_business_account{id,username,followers_count}&access_token=${encodeURIComponent(token)}`
+            `https://graph.facebook.com/v21.0/me/assigned_pages?fields=id,name,instagram_business_account{id,username,followers_count}&access_token=${encodeURIComponent(token)}`
           ];
 
-          for (const url of endpoints) {
-            const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-            const data = await res.json();
-            
-            if (data.error || !data) {
-              sources.InstagramError = JSON.stringify(data.error || data);
-              continue;
-            }
-
-            // Check if it's the /me/accounts list response
-            if (data.data) {
-              const igAccount = data.data.find((page: any) => page.instagram_business_account?.username === 'unpdrum') || data.data.find((page: any) => page.instagram_business_account);
-              if (igAccount?.instagram_business_account?.followers_count !== undefined) {
-                followers_count = igAccount.instagram_business_account.followers_count;
-                break;
-              }
-            } 
-            // Check if it's the direct /61590382684347 response
-            else if (data.instagram_business_account?.followers_count !== undefined) {
-              followers_count = data.instagram_business_account.followers_count;
-              break;
+          const responses = await Promise.all(urls.map(url => fetch(url, { signal: AbortSignal.timeout(5000) }).then(res => res.json())));
+          
+          let allPages: any[] = [];
+          responses.forEach((data, index) => {
+            if (data && data.data) {
+              allPages = allPages.concat(data.data);
             } else {
-              sources.InstagramError = JSON.stringify(data);
+              sources[`InstagramError_${index}`] = JSON.stringify(data.error || data);
             }
+          });
+
+          const igEntry = allPages.find(p => p.instagram_business_account?.followers_count > 0);
+          if (igEntry) {
+            followers_count = igEntry.instagram_business_account.followers_count;
+            sources.MetaPageInfo = `Page: ${igEntry.name} (${igEntry.id}), Followers: ${followers_count}`;
           }
         } catch (e) {
           console.error('Meta API fetch failed', e);
