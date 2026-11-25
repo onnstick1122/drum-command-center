@@ -38,9 +38,7 @@ async function fetchLiveCounts(fallbackRow: any) {
       let followers_count = -1;
       const token = process.env.META_ACCESS_TOKEN?.trim();
       
-      if (!token) {
-        sources.InstagramError = "Missing META_ACCESS_TOKEN";
-      } else {
+      if (token) {
         try {
           const urls = [
             `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username,followers_count}&access_token=${encodeURIComponent(token)}`,
@@ -49,14 +47,10 @@ async function fetchLiveCounts(fallbackRow: any) {
 
           const responses = await Promise.all(urls.map(url => fetch(url, { signal: AbortSignal.timeout(5000) }).then(res => res.json())));
           
-          sources.InstagramDebug = JSON.stringify({ accounts: responses[0], assigned: responses[1] }).slice(0, 500);
-
           let allPages: any[] = [];
-          responses.forEach((data, index) => {
+          responses.forEach((data) => {
             if (data && data.data) {
               allPages = allPages.concat(data.data);
-            } else {
-              sources[`InstagramError_${index}`] = JSON.stringify(data.error || data);
             }
           });
 
@@ -84,11 +78,9 @@ async function fetchLiveCounts(fallbackRow: any) {
 
           if (igEntry) {
             followers_count = igEntry.instagram_business_account.followers_count;
-            sources.MetaPageInfo = `Page: ${igEntry.name} (${igEntry.id}), Followers: ${followers_count}`;
           }
         } catch (e) {
           console.error('Meta API fetch failed', e);
-          sources.InstagramError = e instanceof Error ? e.message : String(e);
         }
       }
 
