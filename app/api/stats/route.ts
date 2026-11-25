@@ -49,6 +49,8 @@ async function fetchLiveCounts(fallbackRow: any) {
 
           const responses = await Promise.all(urls.map(url => fetch(url, { signal: AbortSignal.timeout(5000) }).then(res => res.json())));
           
+          sources.InstagramDebug = JSON.stringify({ accounts: responses[0], assigned: responses[1] }).slice(0, 500);
+
           let allPages: any[] = [];
           responses.forEach((data, index) => {
             if (data && data.data) {
@@ -58,7 +60,28 @@ async function fetchLiveCounts(fallbackRow: any) {
             }
           });
 
-          const igEntry = allPages.find(p => p.instagram_business_account?.followers_count > 0);
+          // Check for followers in existing data
+          let igEntry = allPages.find(p => p.instagram_business_account?.followers_count > 0);
+          
+          // Also query each page specifically
+          if (!igEntry) {
+            for (const page of allPages) {
+              try {
+                const res = await fetch(`https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account{id,username,followers_count},connected_instagram_account{id,username,followers_count}&access_token=${encodeURIComponent(token)}`, { signal: AbortSignal.timeout(5000) });
+                const data = await res.json();
+                if (data.instagram_business_account?.followers_count > 0) {
+                  igEntry = { ...page, instagram_business_account: data.instagram_business_account };
+                  break;
+                } else if (data.connected_instagram_account?.followers_count > 0) {
+                  igEntry = { ...page, instagram_business_account: data.connected_instagram_account };
+                  break;
+                }
+              } catch (e) {
+                console.error(`Failed to fetch details for page ${page.id}`, e);
+              }
+            }
+          }
+
           if (igEntry) {
             followers_count = igEntry.instagram_business_account.followers_count;
             sources.MetaPageInfo = `Page: ${igEntry.name} (${igEntry.id}), Followers: ${followers_count}`;
