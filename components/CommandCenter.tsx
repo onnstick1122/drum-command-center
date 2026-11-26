@@ -99,6 +99,7 @@ export default function CommandCenter() {
     Twitch: 'ustayblowinHIGH',
     Kick: 'unpdrum',
     Facebook: '100082025942089',
+    SoundCloud: 'unpdrum',
   };
 
   const [socialHandles, setSocialHandles] = useState<Record<string, string>>(() => {
@@ -222,7 +223,7 @@ export default function CommandCenter() {
     } catch { setChat([...newChat, { role: 'assistant' as const, content: 'Error connecting to Drum AI.' }]); }
   };
 
-  const platforms = ['Twitch', 'Facebook', 'Instagram', 'TikTok', 'YouTube', 'Kick'];
+  const platforms = ['Twitch', 'Facebook', 'Instagram', 'TikTok', 'YouTube', 'Kick', 'SoundCloud'];
   const latest = getEffectiveStats(stats?.latest || {});
   const previous = stats?.previous || {};
 
@@ -233,6 +234,7 @@ export default function CommandCenter() {
     Twitch: Gamepad2,
     Facebook: Users,
     Kick: LinkIcon,
+    SoundCloud: Music2,
   };
 
   const platformUrl = (platform: string, handle: string) => {
@@ -247,6 +249,7 @@ export default function CommandCenter() {
       case 'twitch': return `https://twitch.tv/${h}`;
       case 'kick': return `https://kick.com/${h}`;
       case 'facebook': return `https://facebook.com/${h}`;
+      case 'soundcloud': return `https://soundcloud.com/${h}`;
       default: return `https://${h}`;
     }
   };
@@ -444,14 +447,15 @@ export default function CommandCenter() {
               if (!handle) return null;
               const url = platformUrl(p, handle);
               const Icon = platformIcons[p] || LinkIcon;
+              const iconColor = p === 'SoundCloud' ? '#ff5500' : 'var(--accent)';
               return (
                 <a key={p} href={url} target='_blank' rel='noopener noreferrer' className='flex items-center gap-3 p-4 bg-[#111] rounded-xl border border-neutral-800 hover:border-[var(--accent)] transition-colors group'>
-                  <Icon size={18} className='text-[var(--accent)]' />
+                  <Icon size={18} style={{ color: iconColor }} />
                   <div className='flex-1'>
                     <div className='text-[10px] uppercase text-neutral-500 mb-1'>{p}</div>
                     <div className='text-sm text-neutral-300 truncate'>{url}</div>
                   </div>
-                  <span className='text-[var(--accent)] opacity-0 group-hover:opacity-100 transition-opacity'>→</span>
+                  <span className={p === 'SoundCloud' ? 'text-[#ff5500] opacity-0 group-hover:opacity-100 transition-opacity' : 'text-[var(--accent)] opacity-0 group-hover:opacity-100 transition-opacity'}>→</span>
                 </a>
               );
             })}

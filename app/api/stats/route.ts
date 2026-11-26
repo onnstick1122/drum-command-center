@@ -35,6 +35,17 @@ async function fetchLiveCounts(fallbackRow: any) {
       return { p: 'TikTok', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
     })(),
     (async () => {
+      try {
+        const res = await fetch('https://soundcloud.com/unpdrum', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
+        const html = await res.text();
+        const match = html.match(/"followers_count":(\d+)/) || html.match(/followers_count["']?\s*:\s*(\d+)/i);
+        const count = match ? parseInt(match[1]) : -1;
+        return { p: 'SoundCloud', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
+      } catch (e) {
+        return { p: 'SoundCloud', v: -1 };
+      }
+    })(),
+    (async () => {
       let followers_count = -1;
       const token = process.env.META_ACCESS_TOKEN?.trim();
       
@@ -110,7 +121,7 @@ async function fetchLiveCounts(fallbackRow: any) {
 
   const liveCounts: Record<string, number> = {};
   results.forEach((r, i) => {
-    const platforms = ['Kick', 'Twitch', 'YouTube', 'TikTok', 'Instagram', 'Facebook'];
+    const platforms = ['Kick', 'Twitch', 'YouTube', 'TikTok', 'Instagram', 'Facebook', 'SoundCloud'];
     const p = platforms[i];
     if (r.status === 'fulfilled' && r.value.v > 0) {
       liveCounts[p] = r.value.v;
