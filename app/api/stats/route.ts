@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 async function fetchLiveCounts(fallbackRow: any) {
@@ -123,7 +125,7 @@ async function fetchLiveCounts(fallbackRow: any) {
     (async () => {
       let count = -1;
       try {
-        const res = await fetch('https://r.jina.ai/http://soundcloud.com/unpdrum', { signal: AbortSignal.timeout(6000) });
+        const res = await fetch(`https://r.jina.ai/http://soundcloud.com/unpdrum?t=${Date.now()}`, { signal: AbortSignal.timeout(6000) });
         const text = await res.text();
         const m = text.match(/(\d[\d,]*)\s+Followers/i) || text.match(/"followers_count":(\d+)/);
         if (m) count = parseInt(m[1].replace(/,/g, ''));
