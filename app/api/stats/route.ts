@@ -14,19 +14,20 @@ function isValidCount(n: any): boolean {
   return typeof n === 'number' && !Number.isNaN(n) && n > 0;
 }
 
-function applyBogusDropProtection(live: number, baseline: number): number {
-  if (!isValidCount(live)) return -1;
-  if (isValidCount(baseline) && baseline > 0 && live < baseline * 0.6) return -1; // dropped >40%, treat as bogus
-  return live;
+async function metaGraph(path: string, token: string) {
+  const res = await fetch(`https://graph.facebook.com/v21.0/${path}?access_token=${encodeURIComponent(token)}`, {
+    signal: AbortSignal.timeout(8000),
+    headers: { 'User-Agent': UA }
+  });
+  return res.json();
 }
 
-async function fetchWithRetry(url: string, init: RequestInit = {}) {
-  const res = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': ACCEPT_LANGUAGE, ...(init.headers || {}) }, signal: AbortSignal.timeout(7000), ...init });
-  return res.text();
-}
-
-async function fetchLiveCounts(fallbackRow: any, previousRow: any) {
+async function fetchLiveCounts() {
   const sources: Record<string, any> = {};
+  const token = process.env.META_ACCESS_TOKEN?.trim();
+  const fbPageId = process.env.FACEBOOK_PAGE_ID?.trim();
+  const igAccountId = process.env.INSTAGRAM_ACCOUNT_ID?.trim();
+
   const results = await Promise.allSettled([
     (async () => {
       const res = await fetch('https://kick.com/api/v2/channels/unpdrum', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
@@ -57,125 +58,79 @@ async function fetchLiveCounts(fallbackRow: any, previousRow: any) {
       const count = match ? parseInt(match[1]) : -1;
       return { p: 'TikTok', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
     })(),
+    // --- SoundCloud: real live count, no hardcoding ---
     (async () => {
+      const handle = 'unpdrum';
+      let count = -1;
       try {
-        const res = await fetch('https://soundcloud.com/unpdrum', { headers: { 'User-Agent': UA, 'Accept-Language': ACCEPT_LANGUAGE }, signal: AbortSignal.timeout(7000) });
-        let html = await res.text();
-        let count = -1;
-        const patterns = [
-          /"followers_count":(\d+)/,
-          /followers_count["']?\s*:\s*(\d+)/i,
-          /<meta property="twitter:app:url:googleplay" content="soundcloud:\/\/users:(\d+)"/i,
-          /og:description" content="([\d,.]+[KMB]?) followers/i,
-          /([\d,.]+[KMB]?) followers/i
-        ];
-        for (const pat of patterns) {
-          const m = html.match(pat);
-          if (m) {
-            count = cleanCount(m[1]);
-            if (isValidCount(count)) break;
-          }
+        // 1) Desktop profile HTML via window.__sc_hydration
+        const res = await fetch(`https://soundcloud.com/${handle}`, { headers: { 'User-Agent': UA, 'Accept-Language': ACCEPT_LANGUAGE }, signal: AbortSignal.timeout(8000) });
+        const html = await res.text();
+        const hyd = html.match(/"followers_count":(\d+)/) || html.match(/followers_count["']?\s*:\s*(\d+)/i);
+        if (hyd) { count = parseInt(hyd[1]); }
+      } catch { /* ignore */ }
+      // 2) Public oEmbed widget API
+      if (!isValidCount(count)) {
+        try {
+          const res = await fetch(`https://soundcloud.com/oembed?format=json&url=https://soundcloud.com/unpdrum`, { signal: AbortSignal.timeout(8000) });
+          const data = await res.json();
+          const m = String(data?.html || data?.title || '').match(/([\d,.]+)\s*followers/i) || String(data?.title || '').match(/([\d,.]+)/);
+          if (m) { count = cleanCount(m[1]); }
+        } catch { /* ignore */ }
+      }
+      // 3) jina.ai reader rendering (works when Vercel IP is blocked)
+      if (!isValidCount(count)) {
+        try {
+          const res = await fetch(`https://r.jina.ai/http://soundcloud.com/${handle}`, { signal: AbortSignal.timeout(12000) });
+          const text = await res.text();
+          const m = text.match(/([\d,.]+[KMB]?)\s*followers/i) || text.match(/followers.*?([\d,.]+[KMB]?)/i);
+          if (m) { count = cleanCount(m[1]); }
+        } catch { /* ignore */ }
+      }
+      return { p: 'SoundCloud', v: isValidCount(count) ? count : -1 };
+    })(),
+    // --- Instagram: Meta Graph API ONLY, never HTML scraping ---
+    (async () => {
+      if (!token) return { p: 'Instagram', v: -1 };
+      try {
+        let igId = igAccountId;
+        if (!igId && fbPageId) {
+          const page = await metaGraph(`${fbPageId}?fields=instagram_business_account{id,username,followers_count}`, token);
+          if (page?.instagram_business_account?.id) igId = page.instagram_business_account.id;
         }
-        // Mobile fallback
-        if (!isValidCount(count)) {
-          try {
-            const mres = await fetch('https://m.soundcloud.com/unpdrum', { headers: { 'User-Agent': UA, 'Accept-Language': ACCEPT_LANGUAGE }, signal: AbortSignal.timeout(7000) });
-            const mhtml = await mres.text();
-            const mm = mhtml.match(/"followers_count":(\d+)/) || mhtml.match(/([\d,.]+)\s+followers/i) || mhtml.match(/Followers<\/[^>]+>\s*([\d,.]+)/i);
-            if (mm) { count = cleanCount(mm[1]); }
-          } catch { /* ignore */ }
+        if (!igId) {
+          // discover linked IG account from any accessible page
+          const accounts = await metaGraph('me/accounts?fields=id,name,instagram_business_account{id,username,followers_count}', token);
+          const pages = accounts?.data || [];
+          const entry = pages.find((p: any) => p.instagram_business_account?.id);
+          if (entry) igId = entry.instagram_business_account.id;
         }
-        return { p: 'SoundCloud', v: isValidCount(count) ? count : -1 };
+        if (!igId) return { p: 'Instagram', v: -1 };
+        const data = await metaGraph(`${igId}?fields=followers_count`, token);
+        const count = data?.followers_count;
+        return { p: 'Instagram', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
       } catch (e) {
-        return { p: 'SoundCloud', v: -1 };
+        return { p: 'Instagram', v: -1 };
       }
     })(),
+    // --- Facebook: Meta Graph API ONLY, never HTML scraping ---
     (async () => {
-      let followers_count = -1;
-      const token = process.env.META_ACCESS_TOKEN?.trim();
-      
-      if (token) {
-        try {
-          const urls = [
-            `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username,followers_count}&access_token=${encodeURIComponent(token)}`,
-            `https://graph.facebook.com/v21.0/me/assigned_pages?fields=id,name,instagram_business_account{id,username,followers_count}&access_token=${encodeURIComponent(token)}`
-          ];
-
-          const responses = await Promise.all(urls.map(url => fetch(url, { signal: AbortSignal.timeout(5000) }).then(res => res.json())));
-          
-          let allPages: any[] = [];
-          responses.forEach((data) => {
-            if (data && data.data) {
-              allPages = allPages.concat(data.data);
-            }
-          });
-
-          let igEntry = allPages.find(p => p.instagram_business_account?.followers_count > 0);
-          
-          if (!igEntry) {
-            for (const page of allPages) {
-              try {
-                const res = await fetch(`https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account{id,username,followers_count},connected_instagram_account{id,username,followers_count}&access_token=${encodeURIComponent(token)}`, { signal: AbortSignal.timeout(5000) });
-                const data = await res.json();
-                if (data.instagram_business_account?.followers_count > 0) {
-                  igEntry = { ...page, instagram_business_account: data.instagram_business_account };
-                  break;
-                } else if (data.connected_instagram_account?.followers_count > 0) {
-                  igEntry = { ...page, instagram_business_account: data.connected_instagram_account };
-                  break;
-                }
-              } catch (e) {
-                console.error(`Failed to fetch details for page ${page.id}`, e);
-              }
-            }
-          }
-
-          if (igEntry) {
-            followers_count = igEntry.instagram_business_account.followers_count;
-          }
-        } catch (e) {
-          console.error('Meta API fetch failed', e);
+      if (!token) return { p: 'Facebook', v: -1 };
+      try {
+        let pageId = fbPageId;
+        if (!pageId) {
+          const accounts = await metaGraph('me/accounts?fields=id,name,fan_count,followers_count', token);
+          const pages = accounts?.data || [];
+          const page = pages.find((p: any) => (p.followers_count || 0) > 0 || (p.fan_count || 0) > 0);
+          if (page) pageId = page.id;
         }
+        if (!pageId) return { p: 'Facebook', v: -1 };
+        const data = await metaGraph(`${pageId}?fields=followers_count,fan_count`, token);
+        const count = data?.followers_count ?? data?.fan_count;
+        return { p: 'Facebook', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
+      } catch (e) {
+        return { p: 'Facebook', v: -1 };
       }
-
-      if (!isValidCount(followers_count)) {
-        try {
-          const res = await fetch('https://www.instagram.com/unpdrum/', { headers: { 'User-Agent': UA, 'Accept-Language': ACCEPT_LANGUAGE }, signal: AbortSignal.timeout(7000) });
-          const html = await res.text();
-          let count = -1;
-          // og:description is the most reliable static source on login walls
-          const og = html.match(/<meta property="og:description" content="([^"]+)"/i);
-          if (og) {
-            const m = og[1].match(/([\d,.]+[KMB]?)\s+Followers/i);
-            if (m) count = cleanCount(m[1]);
-          }
-          // sharedData edge_followed_by
-          if (!isValidCount(count)) {
-            const m = html.match(/"edge_followed_by":\{"count":(\d+)\}/) || html.match(/"followed_by":\{"count":(\d+)\}/);
-            if (m) count = parseInt(m[1]);
-          }
-          // loose regex last resort
-          if (!isValidCount(count)) {
-            const m = html.match(/([\d,.]+[KM]?)\s+Followers/i);
-            if (m) count = cleanCount(m[1]);
-          }
-          followers_count = count;
-        } catch (e) {
-          followers_count = -1;
-        }
-      }
-      
-      return { p: 'Instagram', v: isValidCount(followers_count) ? followers_count : -1 };
-    })(),
-    (async () => {
-      const res = await fetch('https://www.facebook.com/profile.php?id=100082025942089', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
-      const html = await res.text();
-      const match = html.match(/([\d,.]+[KM]?)\s+followers/i);
-      let v: any = match ? match[1].replace(',', '') : '';
-      if (typeof v === 'string' && v.includes('K')) v = parseFloat(v) * 1000;
-      else if (typeof v === 'string' && v.includes('M')) v = parseFloat(v) * 1000000;
-      const count = parseInt(v);
-      return { p: 'Facebook', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
     })()
   ]);
 
@@ -183,18 +138,16 @@ async function fetchLiveCounts(fallbackRow: any, previousRow: any) {
   const platforms = ['Kick', 'Twitch', 'YouTube', 'TikTok', 'Instagram', 'Facebook', 'SoundCloud'];
   results.forEach((r, i) => {
     const p = platforms[i];
-    const baseline = Number(fallbackRow?.[p]) || Number(previousRow?.[p]) || 0;
     let live = -1;
     if (r.status === 'fulfilled' && r.value.v > 0) {
       live = r.value.v;
     }
-    live = applyBogusDropProtection(live, baseline);
     if (isValidCount(live)) {
       liveCounts[p] = live;
       sources[p] = 'live';
     } else {
-      liveCounts[p] = baseline || 0;
-      sources[p] = baseline > 0 ? 'baseline' : 'fallback';
+      liveCounts[p] = 0;
+      sources[p] = 'unavailable';
     }
   });
   return { liveCounts, sources };
@@ -205,7 +158,7 @@ export async function GET() {
     const response = await fetch('https://docs.google.com/spreadsheets/d/e/2PACX-1vRFLd_9rZtKr3eF2vgWViTENOGZTUTirr-fajK2k5IRVL8hR2R4T_rq0Rooi1FbN9-P25SYtjIylAOA/pub?output=csv');
     const csv = await response.text();
     const lines = csv.split('\n');
-    
+
     const rows = lines.slice(1).filter(line => line.trim()).map(line => {
       const values = line.split(',');
       return {
@@ -220,7 +173,7 @@ export async function GET() {
       };
     });
 
-    const { liveCounts, sources } = await fetchLiveCounts(rows[rows.length - 1], rows[rows.length - 2]);
+    const { liveCounts, sources } = await fetchLiveCounts();
     const liveSnapshot: { 
         timestamp: string; 
         Twitch: number; 
@@ -252,5 +205,3 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 });
   }
 }
-
-
