@@ -9,7 +9,14 @@ async function fetchLiveCounts(fallbackRow: any) {
       const res = await fetch('https://kick.com/api/v2/channels/unpdrum', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
       const data = await res.json();
       const count = data.followers_count;
-      return { p: 'Kick', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
+      if (typeof count === 'number' && !Number.isNaN(count) && count > 0) return { p: 'Kick', v: count };
+      try {
+        const jres = await fetch('https://r.jina.ai/http://kick.com/unpdrum', { signal: AbortSignal.timeout(6000) });
+        const jtext = await jres.text();
+        const jm = jtext.match(/(\d[\d,]*)\s+followers/i);
+        if (jm) return { p: 'Kick', v: parseInt(jm[1].replace(/,/g, '')) };
+      } catch { /* ignore */ }
+      return { p: 'Kick', v: -1 };
     })(),
     (async () => {
       const res = await fetch('https://decapi.me/twitch/followcount/ustayblowinHIGH', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
@@ -104,7 +111,14 @@ async function fetchLiveCounts(fallbackRow: any) {
       if (typeof v === 'string' && v.includes('K')) v = parseFloat(v) * 1000;
       else if (typeof v === 'string' && v.includes('M')) v = parseFloat(v) * 1000000;
       const count = parseInt(v);
-      return { p: 'Facebook', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
+      if (count > 0) return { p: 'Facebook', v: count };
+      try {
+        const jres = await fetch('https://r.jina.ai/http://www.facebook.com/profile.php?id=100082025942089', { signal: AbortSignal.timeout(6000) });
+        const jtext = await jres.text();
+        const jm = jtext.match(/(\d[\d,]*)\s+followers/i);
+        if (jm) return { p: 'Facebook', v: parseInt(jm[1].replace(/,/g, '')) };
+      } catch { /* ignore */ }
+      return { p: 'Facebook', v: -1 };
     })(),
     (async () => {
       let count = -1;
@@ -118,6 +132,7 @@ async function fetchLiveCounts(fallbackRow: any) {
     })()
   ]);
 
+  const HARDCODED_BASELINES: Record<string, number> = { Facebook: 747, Kick: 6, SoundCloud: 74 };
   const liveCounts: Record<string, number> = {};
   results.forEach((r, i) => {
     const platforms = ['Kick', 'Twitch', 'YouTube', 'TikTok', 'Instagram', 'Facebook', 'SoundCloud'];
@@ -126,7 +141,8 @@ async function fetchLiveCounts(fallbackRow: any) {
       liveCounts[p] = r.value.v;
       sources[p] = 'live';
     } else {
-      liveCounts[p] = Number(fallbackRow?.[p]) || 0;
+      const hardcoded = HARDCODED_BASELINES[p];
+      liveCounts[p] = hardcoded !== undefined ? hardcoded : (Number(fallbackRow?.[p]) || 0);
       sources[p] = 'fallback';
     }
   });
