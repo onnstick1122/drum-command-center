@@ -92,7 +92,25 @@ export default function CommandCenter() {
   const [pin, setPin] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const [socialHandles, setSocialHandles] = useState<Record<string, string>>({});
+  const DEFAULT_SOCIAL_HANDLES: Record<string, string> = {
+    Instagram: 'unpdrum',
+    YouTube: 'unpdrum',
+    TikTok: 'unpdrum',
+    Twitch: 'ustayblowinHIGH',
+    Kick: 'unpdrum',
+    Facebook: '100082025942089',
+  };
+
+  const [socialHandles, setSocialHandles] = useState<Record<string, string>>(() => {
+    let parsed: Record<string, string> = {};
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('drum_social_handles');
+      try { if (saved) parsed = JSON.parse(saved); } catch {}
+    }
+    const merged = { ...DEFAULT_SOCIAL_HANDLES };
+    Object.entries(parsed).forEach(([k, v]) => { if (v && v.trim()) merged[k] = v.trim(); });
+    return merged;
+  });
 
   const [chat, setChat] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
   const [input, setInput] = useState('');
@@ -107,7 +125,13 @@ export default function CommandCenter() {
     const savedOverrides = localStorage.getItem('drum_count_overrides');
     if (savedOverrides) setOverrides(JSON.parse(savedOverrides));
     const savedHandles = localStorage.getItem('drum_social_handles');
-    if (savedHandles) setSocialHandles(JSON.parse(savedHandles));
+    let parsed: Record<string, string> = {};
+    try { if (savedHandles) parsed = JSON.parse(savedHandles); } catch {}
+    setSocialHandles(prev => {
+      const merged = { ...DEFAULT_SOCIAL_HANDLES, ...prev };
+      Object.entries(parsed).forEach(([k, v]) => { if (v && v.trim()) merged[k] = v.trim(); });
+      return merged;
+    });
     fetchData();
   }, []);
 
