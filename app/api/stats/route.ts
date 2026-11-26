@@ -125,9 +125,9 @@ async function fetchLiveCounts(fallbackRow: any) {
     (async () => {
       let count = -1;
       try {
-        const res = await fetch(`https://r.jina.ai/http://soundcloud.com/unpdrum?t=${Date.now()}`, { signal: AbortSignal.timeout(6000) });
+        const res = await fetch('https://r.jina.ai/http://soundcloud.com/unpdrum', { headers: { 'X-No-Cache': 'true' }, signal: AbortSignal.timeout(6000) });
         const text = await res.text();
-        const m = text.match(/(\d[\d,]*)\s+Followers/i) || text.match(/"followers_count":(\d+)/);
+        const m = text.match(/(\d[\d,]*)\s+Followers[\s\S]{0,80}?(\d[\d,]*)\s+Following[\s\S]{0,80}?(\d[\d,]*)\s+Tracks/i) || text.match(/"followers_count":(\d+)/);
         if (m) count = parseInt(m[1].replace(/,/g, ''));
       } catch { /* ignore */ }
       return { p: 'SoundCloud', v: count > 0 ? count : 0 };
