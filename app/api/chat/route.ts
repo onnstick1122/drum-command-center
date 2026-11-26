@@ -127,26 +127,36 @@ export async function POST(req: Request) {
   // 4. Automatic GitHub Models backup if Gemini returned 503/504/429 (or is still empty)
   if (!replyText && process.env.GITHUB_MODELS_TOKEN) {
     try {
-      const ghRes = await fetch('https://models.github.ai/inference/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.GITHUB_MODELS_TOKEN}`
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-4o-mini',
-          messages: [
-            { role: 'system', content: 'You are Drum AI, a social media growth analyst. Keep every response under 110 words total. Start with 1 bold headline sentence, then 3 to 4 short bullet points (- ..., 1 short sentence per bullet) with bold key stats. Never write long paragraphs or ### headers.' },
-            { role: 'user', content: prompt }
-          ]
-        }),
-        signal: AbortSignal.timeout(7000)
-      });
-      if (ghRes.ok) {
-        const ghData = await ghRes.json();
-        replyText = ghData.choices?.[0]?.message?.content || '';
-      } else {
-        console.warn(`GitHub Models failed with status:`, ghRes.status);
+      const ghModels = ['openai/gpt-4o-mini', 'meta/llama-3.3-70b-instruct'];
+      for (const model of ghModels) {
+        try {
+          const ghRes = await fetch('https://models.github.ai/inference/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.GITHUB_MODELS_TOKEN}`,
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28'
+            },
+            body: JSON.stringify({
+              model: model,
+              messages: [
+                { role: 'system', content: 'You are Drum AI, a social media growth analyst. Keep every response under 110 words total. Start with 1 bold headline sentence, then 3 to 4 short bullet points (- ..., 1 short sentence per bullet) with bold key stats. Never write long paragraphs or ### headers.' },
+                { role: 'user', content: prompt }
+              ]
+            }),
+            signal: AbortSignal.timeout(10000)
+          });
+          if (ghRes.ok) {
+            const ghData = await ghRes.json();
+            replyText = ghData.choices?.[0]?.message?.content || '';
+            if (replyText) break;
+          } else {
+            console.warn(`GitHub Models model ${model} failed with status:`, ghRes.status);
+          }
+        } catch (ghErr) {
+          console.warn(`GitHub Models model ${model} error:`, ghErr);
+        }
       }
     } catch (ghErr) {
       console.warn('GitHub Models error:', ghErr);
