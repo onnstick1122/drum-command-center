@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { RefreshCw, BarChart3, MessageSquare, Link as LinkIcon, Settings, Lock, RotateCcw } from 'lucide-react';
+import { RefreshCw, BarChart3, MessageSquare, Link as LinkIcon, Settings, Lock, RotateCcw, Camera, PlayCircle, Music2, Gamepad2, Users } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 function formatAssistantMessage(text: string) {
@@ -92,10 +92,7 @@ export default function CommandCenter() {
   const [pin, setPin] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const [quickLinks] = useState<{ name: string; url: string }[]>([
-    { name: 'DRUM! APP STORE', url: 'https://app-store-hub-virid.vercel.app' },
-    { name: 'Prompt Forge', url: 'https://prompt-forge-eight-mu.vercel.app' },
-  ]);
+  const [socialHandles, setSocialHandles] = useState<Record<string, string>>({});
 
   const [chat, setChat] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
   const [input, setInput] = useState('');
@@ -109,6 +106,8 @@ export default function CommandCenter() {
     setAccentColor(localStorage.getItem('drum_accent') || '#FF0000');
     const savedOverrides = localStorage.getItem('drum_count_overrides');
     if (savedOverrides) setOverrides(JSON.parse(savedOverrides));
+    const savedHandles = localStorage.getItem('drum_social_handles');
+    if (savedHandles) setSocialHandles(JSON.parse(savedHandles));
     fetchData();
   }, []);
 
@@ -202,6 +201,31 @@ export default function CommandCenter() {
   const platforms = ['Twitch', 'Facebook', 'Instagram', 'TikTok', 'YouTube', 'Kick'];
   const latest = getEffectiveStats(stats?.latest || {});
   const previous = stats?.previous || {};
+
+  const platformIcons: Record<string, any> = {
+    Instagram: Camera,
+    Youtube: PlayCircle,
+    Tiktok: Music2,
+    Twitch: Gamepad2,
+    Facebook: Users,
+    Kick: LinkIcon,
+  };
+
+  const platformUrl = (platform: string, handle: string) => {
+    const h = handle.replace(/^@/, '').trim();
+    if (!h) return '';
+    if (h.startsWith('http')) return h;
+    const key = platform.toLowerCase();
+    switch (key) {
+      case 'instagram': return `https://instagram.com/${h}`;
+      case 'youtube': return `https://youtube.com/@${h}`;
+      case 'tiktok': return `https://tiktok.com/@${h}`;
+      case 'twitch': return `https://twitch.tv/${h}`;
+      case 'kick': return `https://kick.com/${h}`;
+      case 'facebook': return `https://facebook.com/${h}`;
+      default: return `https://${h}`;
+    }
+  };
   const totalFollowers = platforms.reduce((a, b) => a + (latest[b] || 0), 0);
   const prevTotal = platforms.reduce((a, b) => a + (previous[b] || 0), 0);
   const delta = totalFollowers - prevTotal;
@@ -360,6 +384,30 @@ export default function CommandCenter() {
                         ))}
                     </div>
                 </div>
+                <div className='p-6 bg-[#111] rounded-2xl border border-neutral-800'>
+                    <h3 className='mb-4 text-sm font-bold uppercase tracking-widest'>Social Media Handles (Quick Links)</h3>
+                    <p className='text-xs text-neutral-500 mb-4'>Enter your handle for each platform (e.g. @unpdrum). These appear as direct profile links in Quick Links.</p>
+                    <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                        {platforms.map(p => (
+                            <div key={p} className='flex items-center gap-2'>
+                                <span className='w-20 text-xs text-neutral-400'>{p}</span>
+                                <input
+                                    type='text'
+                                    placeholder={`@${p.toLowerCase()}-handle`}
+                                    value={socialHandles[p] ?? ''}
+                                    onChange={e => {
+                                        const val = e.target.value.replace(/^@/, '').trim();
+                                        const newHandles = { ...socialHandles };
+                                        if (val) newHandles[p] = val; else delete newHandles[p];
+                                        setSocialHandles(newHandles);
+                                        localStorage.setItem('drum_social_handles', JSON.stringify(newHandles));
+                                    }}
+                                    className='bg-[#060606] border border-neutral-700 p-1 rounded text-xs w-full'
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
         )
       )}
@@ -367,16 +415,27 @@ export default function CommandCenter() {
         <div className='space-y-4'>
           <h3 className='text-sm font-bold uppercase tracking-widest mb-4'>Quick Links</h3>
           <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-            {quickLinks.map((link, i) => (
-              <a key={i} href={link.url} target='_blank' rel='noopener noreferrer' className='flex items-center gap-3 p-4 bg-[#111] rounded-xl border border-neutral-800 hover:border-[var(--accent)] transition-colors'>
-                <LinkIcon size={18} className='text-[var(--accent)]' />
-                <div className='flex-1'>
-                  <div className='text-[10px] uppercase text-neutral-500 mb-1'>{link.name}</div>
-                  <div className='text-sm text-neutral-300 truncate'>{link.url}</div>
-                </div>
-                <span className='text-[var(--accent)]'>→</span>
-              </a>
-            ))}
+            {platforms.map(p => {
+              const handle = socialHandles[p];
+              if (!handle) return null;
+              const url = platformUrl(p, handle);
+              const Icon = platformIcons[p] || LinkIcon;
+              return (
+                <a key={p} href={url} target='_blank' rel='noopener noreferrer' className='flex items-center gap-3 p-4 bg-[#111] rounded-xl border border-neutral-800 hover:border-[var(--accent)] transition-colors group'>
+                  <Icon size={18} className='text-[var(--accent)]' />
+                  <div className='flex-1'>
+                    <div className='text-[10px] uppercase text-neutral-500 mb-1'>{p}</div>
+                    <div className='text-sm text-neutral-300 truncate'>{url}</div>
+                  </div>
+                  <span className='text-[var(--accent)] opacity-0 group-hover:opacity-100 transition-opacity'>→</span>
+                </a>
+              );
+            })}
+            {Object.keys(socialHandles).length === 0 && (
+              <div className='col-span-2 p-6 bg-[#111] rounded-xl border border-neutral-800 text-center text-neutral-500 text-sm'>
+                No social handles configured yet. Add them in Settings to display your real profile links here.
+              </div>
+            )}
           </div>
         </div>
       )}
