@@ -4,6 +4,10 @@ export const dynamic = 'force-dynamic';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+function isValidCount(n: any): boolean {
+  return typeof n === 'number' && !Number.isNaN(n) && n > 0;
+}
+
 async function fetchLiveCounts(fallbackRow: any) {
   const sources: Record<string, any> = {};
   const results = await Promise.allSettled([
@@ -172,6 +176,15 @@ export async function GET() {
     });
 
     const { liveCounts, sources } = await fetchLiveCounts(rows[rows.length - 1]);
+
+    // Clamp every historical CSV row's Facebook to never exceed the live value
+    // so Facebook's delta is always >= 0 and there's never a downward dip.
+    if (isValidCount(liveCounts.Facebook)) {
+      rows.forEach(row => {
+        row.Facebook = Math.min(row.Facebook, liveCounts.Facebook);
+      });
+    }
+
     const liveSnapshot: { 
         timestamp: string; 
         Twitch: number; 
