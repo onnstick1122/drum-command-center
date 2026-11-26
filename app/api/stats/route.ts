@@ -1,8 +1,31 @@
 import { NextResponse } from 'next/server';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const ACCEPT_LANGUAGE = 'en-US,en;q=0.9';
 
-async function fetchLiveCounts(fallbackRow: any) {
+function cleanCount(v: any): number {
+  if (typeof v === 'string' && v.includes('K')) return parseFloat(v.replace(',', '')) * 1000;
+  if (typeof v === 'string' && v.includes('M')) return parseFloat(v.replace(',', '')) * 1000000;
+  if (typeof v === 'string' && v.includes('B')) return parseFloat(v.replace(',', '')) * 1000000000;
+  return parseInt(v);
+}
+
+function isValidCount(n: any): boolean {
+  return typeof n === 'number' && !Number.isNaN(n) && n > 0;
+}
+
+function applyBogusDropProtection(live: number, baseline: number): number {
+  if (!isValidCount(live)) return -1;
+  if (isValidCount(baseline) && baseline > 0 && live < baseline * 0.6) return -1; // dropped >40%, treat as bogus
+  return live;
+}
+
+async function fetchWithRetry(url: string, init: RequestInit = {}) {
+  const res = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': ACCEPT_LANGUAGE, ...(init.headers || {}) }, signal: AbortSignal.timeout(7000), ...init });
+  return res.text();
+}
+
+async function fetchLiveCounts(fallbackRow: any, previousRow: any) {
   const sources: Record<string, any> = {};
   const results = await Promise.allSettled([
     (async () => {
@@ -36,11 +59,33 @@ async function fetchLiveCounts(fallbackRow: any) {
     })(),
     (async () => {
       try {
-        const res = await fetch('https://soundcloud.com/unpdrum', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
-        const html = await res.text();
-        const match = html.match(/"followers_count":(\d+)/) || html.match(/followers_count["']?\s*:\s*(\d+)/i);
-        const count = match ? parseInt(match[1]) : -1;
-        return { p: 'SoundCloud', v: (typeof count === 'number' && !Number.isNaN(count) && count > 0) ? count : -1 };
+        const res = await fetch('https://soundcloud.com/unpdrum', { headers: { 'User-Agent': UA, 'Accept-Language': ACCEPT_LANGUAGE }, signal: AbortSignal.timeout(7000) });
+        let html = await res.text();
+        let count = -1;
+        const patterns = [
+          /"followers_count":(\d+)/,
+          /followers_count["']?\s*:\s*(\d+)/i,
+          /<meta property="twitter:app:url:googleplay" content="soundcloud:\/\/users:(\d+)"/i,
+          /og:description" content="([\d,.]+[KMB]?) followers/i,
+          /([\d,.]+[KMB]?) followers/i
+        ];
+        for (const pat of patterns) {
+          const m = html.match(pat);
+          if (m) {
+            count = cleanCount(m[1]);
+            if (isValidCount(count)) break;
+          }
+        }
+        // Mobile fallback
+        if (!isValidCount(count)) {
+          try {
+            const mres = await fetch('https://m.soundcloud.com/unpdrum', { headers: { 'User-Agent': UA, 'Accept-Language': ACCEPT_LANGUAGE }, signal: AbortSignal.timeout(7000) });
+            const mhtml = await mres.text();
+            const mm = mhtml.match(/"followers_count":(\d+)/) || mhtml.match(/([\d,.]+)\s+followers/i) || mhtml.match(/Followers<\/[^>]+>\s*([\d,.]+)/i);
+            if (mm) { count = cleanCount(mm[1]); }
+          } catch { /* ignore */ }
+        }
+        return { p: 'SoundCloud', v: isValidCount(count) ? count : -1 };
       } catch (e) {
         return { p: 'SoundCloud', v: -1 };
       }
@@ -65,10 +110,8 @@ async function fetchLiveCounts(fallbackRow: any) {
             }
           });
 
-          // Check for followers in existing data
           let igEntry = allPages.find(p => p.instagram_business_account?.followers_count > 0);
           
-          // Also query each page specifically
           if (!igEntry) {
             for (const page of allPages) {
               try {
@@ -95,17 +138,34 @@ async function fetchLiveCounts(fallbackRow: any) {
         }
       }
 
-      if (typeof followers_count !== 'number' || followers_count <= 0) {
-        const res = await fetch('https://www.instagram.com/unpdrum/', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
-        const html = await res.text();
-        const match = html.match(/([\d,.]+[KM]?)\s+Followers/i);
-        let v: any = match ? match[1].replace(',', '') : '';
-        if (typeof v === 'string' && v.includes('K')) v = parseFloat(v) * 1000;
-        else if (typeof v === 'string' && v.includes('M')) v = parseFloat(v) * 1000000;
-        followers_count = parseInt(v);
+      if (!isValidCount(followers_count)) {
+        try {
+          const res = await fetch('https://www.instagram.com/unpdrum/', { headers: { 'User-Agent': UA, 'Accept-Language': ACCEPT_LANGUAGE }, signal: AbortSignal.timeout(7000) });
+          const html = await res.text();
+          let count = -1;
+          // og:description is the most reliable static source on login walls
+          const og = html.match(/<meta property="og:description" content="([^"]+)"/i);
+          if (og) {
+            const m = og[1].match(/([\d,.]+[KMB]?)\s+Followers/i);
+            if (m) count = cleanCount(m[1]);
+          }
+          // sharedData edge_followed_by
+          if (!isValidCount(count)) {
+            const m = html.match(/"edge_followed_by":\{"count":(\d+)\}/) || html.match(/"followed_by":\{"count":(\d+)\}/);
+            if (m) count = parseInt(m[1]);
+          }
+          // loose regex last resort
+          if (!isValidCount(count)) {
+            const m = html.match(/([\d,.]+[KM]?)\s+Followers/i);
+            if (m) count = cleanCount(m[1]);
+          }
+          followers_count = count;
+        } catch (e) {
+          followers_count = -1;
+        }
       }
       
-      return { p: 'Instagram', v: (typeof followers_count === 'number' && !Number.isNaN(followers_count) && followers_count > 0) ? followers_count : -1 };
+      return { p: 'Instagram', v: isValidCount(followers_count) ? followers_count : -1 };
     })(),
     (async () => {
       const res = await fetch('https://www.facebook.com/profile.php?id=100082025942089', { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(5000) });
@@ -120,15 +180,21 @@ async function fetchLiveCounts(fallbackRow: any) {
   ]);
 
   const liveCounts: Record<string, number> = {};
+  const platforms = ['Kick', 'Twitch', 'YouTube', 'TikTok', 'Instagram', 'Facebook', 'SoundCloud'];
   results.forEach((r, i) => {
-    const platforms = ['Kick', 'Twitch', 'YouTube', 'TikTok', 'Instagram', 'Facebook', 'SoundCloud'];
     const p = platforms[i];
+    const baseline = Number(fallbackRow?.[p]) || Number(previousRow?.[p]) || 0;
+    let live = -1;
     if (r.status === 'fulfilled' && r.value.v > 0) {
-      liveCounts[p] = r.value.v;
+      live = r.value.v;
+    }
+    live = applyBogusDropProtection(live, baseline);
+    if (isValidCount(live)) {
+      liveCounts[p] = live;
       sources[p] = 'live';
     } else {
-      liveCounts[p] = Number(fallbackRow?.[p]) || 0;
-      sources[p] = 'fallback';
+      liveCounts[p] = baseline || 0;
+      sources[p] = baseline > 0 ? 'baseline' : 'fallback';
     }
   });
   return { liveCounts, sources };
@@ -150,10 +216,11 @@ export async function GET() {
         TikTok: parseInt(values[4]?.trim() || '0'),
         YouTube: parseInt(values[5]?.trim() || '0'),
         Kick: parseInt(values[6]?.trim() || '0'),
+        SoundCloud: parseInt(values[7]?.trim() || '0'),
       };
     });
 
-    const { liveCounts, sources } = await fetchLiveCounts(rows[rows.length - 1]);
+    const { liveCounts, sources } = await fetchLiveCounts(rows[rows.length - 1], rows[rows.length - 2]);
     const liveSnapshot: { 
         timestamp: string; 
         Twitch: number; 
@@ -162,6 +229,7 @@ export async function GET() {
         TikTok: number; 
         YouTube: number; 
         Kick: number; 
+        SoundCloud: number; 
     } = { 
         timestamp: 'Live Now', 
         Twitch: liveCounts.Twitch,
@@ -169,7 +237,8 @@ export async function GET() {
         Instagram: liveCounts.Instagram,
         TikTok: liveCounts.TikTok,
         YouTube: liveCounts.YouTube,
-        Kick: liveCounts.Kick
+        Kick: liveCounts.Kick,
+        SoundCloud: liveCounts.SoundCloud
     };
     rows.push(liveSnapshot);
 
