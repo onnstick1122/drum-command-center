@@ -92,6 +92,11 @@ export default function CommandCenter() {
   const [pin, setPin] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  const [quickLinks] = useState<{ name: string; url: string }[]>([
+    { name: 'DRUM! APP STORE', url: 'https://app-store-hub-virid.vercel.app' },
+    { name: 'Prompt Forge', url: 'https://prompt-forge-eight-mu.vercel.app' },
+  ]);
+
   const [chat, setChat] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
   const [input, setInput] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -357,6 +362,23 @@ export default function CommandCenter() {
                 </div>
             </div>
         )
+      )}
+      {activeTab === 'Quick Links' && (
+        <div className='space-y-4'>
+          <h3 className='text-sm font-bold uppercase tracking-widest mb-4'>Quick Links</h3>
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+            {quickLinks.map((link, i) => (
+              <a key={i} href={link.url} target='_blank' rel='noopener noreferrer' className='flex items-center gap-3 p-4 bg-[#111] rounded-xl border border-neutral-800 hover:border-[var(--accent)] transition-colors'>
+                <LinkIcon size={18} className='text-[var(--accent)]' />
+                <div className='flex-1'>
+                  <div className='text-[10px] uppercase text-neutral-500 mb-1'>{link.name}</div>
+                  <div className='text-sm text-neutral-300 truncate'>{link.url}</div>
+                </div>
+                <span className='text-[var(--accent)]'>→</span>
+              </a>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -124,6 +124,35 @@ export async function POST(req: Request) {
     }
   }
 
+  // 4. Automatic GitHub Models backup if Gemini returned 503/504/429 (or is still empty)
+  if (!replyText && process.env.GITHUB_MODELS_TOKEN) {
+    try {
+      const ghRes = await fetch('https://models.github.ai/inference/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.GITHUB_MODELS_TOKEN}`
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'You are Drum AI, a social media growth analyst. Keep every response under 110 words total. Start with 1 bold headline sentence, then 3 to 4 short bullet points (- ..., 1 short sentence per bullet) with bold key stats. Never write long paragraphs or ### headers.' },
+            { role: 'user', content: prompt }
+          ]
+        }),
+        signal: AbortSignal.timeout(7000)
+      });
+      if (ghRes.ok) {
+        const ghData = await ghRes.json();
+        replyText = ghData.choices?.[0]?.message?.content || '';
+      } else {
+        console.warn(`GitHub Models failed with status:`, ghRes.status);
+      }
+    } catch (ghErr) {
+      console.warn('GitHub Models error:', ghErr);
+    }
+  }
+
   if (!replyText) {
     return NextResponse.json({ 
       error: 'Drum AI is temporarily busy due to high server demand — please try again in a few seconds.' 
